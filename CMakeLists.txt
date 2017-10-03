@@ -14,7 +14,9 @@ set(SOURCE_FILES
         crypto/sha256.c
         crypto/sha256.h
         3dsconv.c
+        3dsconv.h
         data.inl
+        main.c
         uint128.h)
 
 add_executable(3dsconv ${SOURCE_FILES})

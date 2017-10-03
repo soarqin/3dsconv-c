@@ -1,4 +1,4 @@
-#define PROGRAM_VERSION "1.0"
+#include "3dsconv.h"
 
 #ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS
@@ -11,12 +11,9 @@
 #include "crypto/aes.h"
 #include "crypto/sha256.h"
 
-#define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
-#include <stdarg.h>
 #include <string.h>
 
 #include "data.inl"
@@ -26,38 +23,6 @@
 #define BE32(n) __builtin_bswap32(n)
 #define BE64(n) __builtin_bswap64(n)
 #define BE16(n) __builtin_bswap16(n)
-
-typedef struct {
-    int verbose;
-    int overwrite;
-    int ignore_bad_hashes;
-    char output_directory[512];
-    int total_files;
-    int allocated_files;
-    char **files;
-} options;
-
-size_t unhexlify(const char *input, uint8_t *output) {
-#define HEX_PROC(n, ch) \
-    if (n == 0) break; \
-    if (n >= '0' && n <= '9') \
-        ch = n - '0'; \
-    else if (n >= 'A' && n <= 'F') \
-        ch = n - 'A' + 10; \
-    else if (n >= 'a' && n <= 'f') \
-        ch = n - 'a' + 10; \
-    else break;
-
-    uint8_t *output_org = output;
-    while(1) {
-        uint8_t ch1, ch2;
-        HEX_PROC(input[0], ch1);
-        HEX_PROC(input[1], ch2);
-        *output++ = (ch1 << 4) | ch2;
-        input += 2;
-    }
-    return output - output_org;
-}
 
 void hexlify(const uint8_t *input, size_t len, char *output, int upper) {
     size_t i;
@@ -84,16 +49,6 @@ void int128_to_key(uint128 *n, uint8_t *key) {
 void show_progress(size_t val, size_t maxval) {
     uint32_t minval = val < maxval ? val : maxval;
     fprintf(stdout, "\r  %5.1f%% %12" PRIu64 " / %-12" PRIu64, 100. * minval / maxval, (uint64_t)minval, (uint64_t)maxval);
-}
-
-void cleanup(options *opt) {
-    int i;
-    for (i = 0; i < opt->total_files; ++i) {
-        free(opt->files[i]);
-    }
-    free(opt->files);
-    opt->total_files = 0;
-    opt->allocated_files = 0;
 }
 
 struct chunk_record {
@@ -138,12 +93,11 @@ void writepad(FILE *f, size_t size) {
     free(data);
 }
 
-void do_convert(const char *rom_file, const char *cia_file, options *opt) {
+void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     const uint128 orig_ncch_key = {0x1F76A94DE934C053ULL, 0xB98E95CECA3E4D17ULL};
     const size_t mu = 0x200;  // media unit
     const size_t read_size = 0x800000;  // used from padxorer
     const uint32_t zerokey[0x10] = {0};
-    int processed_files = 0;
     char magic[4];
     uint8_t title_id[8];
     char title_id_hex[17];
@@ -568,164 +522,8 @@ void do_convert(const char *rom_file, const char *cia_file, options *opt) {
     writepad(cia, 0xFC);
     fwrite(exefs_icon, 1, 0x36C0, cia);
 
-    fprintf(stdout, "Done converting %u out of %u files.", ++processed_files, opt->total_files);
+    fprintf(stdout, "Done converting %s to %s.", rom_file, cia_file);
 
     fclose(cia);
     fclose(rom);
-}
-
-
-void showhelp() {
-    fprintf(stderr, "\
-Convert Nintendo 3DS CCI (.3ds/.cci) to CIA\n\
-https://github.com/soarqin/3dsconv\n\
-\n\
-Usage: {} [options] <game> [<game>...]\n\
-\n\
-Options:\n\
-  --output=<dir>       - Save converted files in specified directory\n\
-                           Default: .\n\
-  --overwrite          - Overwrite existing converted files\n\
-  --ignore-bad-hashes  - Ignore invalid hashes and CCI files and convert anyway\n\
-  --verbose            - Print more information\n\
-}\n");
-}
-
-struct arg_struct {
-    int type;
-    const char *name;
-    void *var;
-};
-
-void parse_args(int argc, char *argv[], options *opt) {
-    struct arg_struct args_to_check[] = {
-            {0, "--verbose", &opt->verbose},
-            {0, "--overwrite", &opt->overwrite},
-            {0, "--ignore-bad-hashes", &opt->ignore_bad_hashes},
-            {1, "--output", opt->output_directory},
-            {0, NULL}
-    };
-    int i;
-
-    opt->verbose = 0;
-    opt->overwrite = 0;
-    opt->ignore_bad_hashes = 0;
-    opt->output_directory[0] = 0;
-    opt->total_files = 0;
-    opt->allocated_files = 0;
-    opt->files = NULL;
-    for(i = 1; i < argc; ++i) {
-        struct arg_struct *s;
-        char *arg = argv[i];
-        if (arg[0] == '-' && arg[1] == '-') {
-            char *n = strchr(arg, '=');
-            const char *value = NULL;
-            if (n != NULL) {
-                value = n + 1;
-                *n = 0;
-            }
-            for (s = args_to_check; s->name != NULL; ++s) {
-                if(strcmp(arg, s->name) == 0) {
-                    switch(s->type) {
-                        case 0:
-                            *(int*)s->var = value == NULL ? 1 : atoi(value);
-                            break;
-                        case 1:
-                            strcpy((char*)s->var, value);
-                            break;
-                    }
-                }
-            }
-        } else {
-            if (opt->total_files >= opt->allocated_files) {
-                opt->allocated_files += 16;
-                opt->files = (char**)realloc(opt->files, opt->allocated_files * sizeof(char*));
-            }
-            opt->files[opt->total_files++] = strdup(arg);
-        }
-    }
-}
-
-#ifdef _WIN32
-#include <direct.h>
-#define mkdir(d, p) _mkdir(d)
-#define is_slash(d) (((d) == '/') || ((d) == '\\'))
-#define slash_char '\\'
-#else
-#define is_slash(d) ((d) == '/')
-#define slash_char '/'
-#endif
-
-static void makedirs(const char *dir) {
-    char tmp[512];
-    char *p = NULL;
-    size_t len;
-
-    snprintf(tmp, sizeof(tmp), "%s", dir);
-    len = strlen(tmp);
-    if(is_slash(tmp[len - 1]))
-        tmp[len - 1] = 0;
-    for(p = tmp + 1; *p; p++)
-        if(is_slash(*p)) {
-            *p = 0;
-            mkdir(tmp, S_IRWXU);
-            *p = slash_char;
-        }
-    mkdir(tmp, S_IRWXU);
-}
-
-int main(int argc, char *argv[]) {
-    int i;
-    options opt;
-
-    fprintf(stderr, "3dsconv %s\n", PROGRAM_VERSION);
-    if (argc < 2) {
-        showhelp();
-        return 1;
-    }
-    parse_args(argc, argv, &opt);
-
-    if (opt.total_files == 0 || opt.files == NULL) {
-        fprintf(stderr, "Error: No files were given\n");
-        exit(1);
-    }
-
-    if (opt.output_directory[0] != 0) {
-        size_t l = strlen(opt.output_directory);
-        if (!is_slash(opt.output_directory[l - 1])) {
-            opt.output_directory[l] = slash_char;
-            opt.output_directory[l + 1] = 0;
-        }
-        makedirs(opt.output_directory);
-    }
-
-    for (i = 0; i < opt.total_files; ++i) {
-        char cia_file[512];
-        if (opt.output_directory[0] != 0) {
-            const char *t1 = strrchr(opt.files[i], '/');
-            if ('/' != slash_char) {
-                const char *t2 = strrchr(opt.files[i], slash_char);
-                if (t2 > t1) t1 = t2;
-            }
-            strcpy(cia_file, opt.output_directory);
-            strcat(cia_file, t1 == NULL ? opt.files[i] : t1);
-        } else {
-            strcpy(cia_file, opt.files[i]);
-        }
-        char *r = strrchr(cia_file, '.');
-        if (r == NULL) strcat(cia_file, ".cia");
-        else strcpy(r, ".cia");
-        if (!opt.overwrite) {
-            FILE *check = fopen(cia_file, "rb");
-            if (check != NULL) {
-                fclose(check);
-                fprintf(stderr, "\"%s\" already exists. Use `--overwrite' to force conversion.\n", cia_file);
-                continue;
-            }
-        }
-        do_convert(opt.files[i], cia_file, &opt);
-    }
-
-    cleanup(&opt);
-    return 0;
 }
