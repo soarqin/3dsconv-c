@@ -1,5 +1,13 @@
 #define PROGRAM_VERSION "1.0"
 
+#ifdef _MSC_VER
+#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_NONSTDC_NO_WARNINGS
+#define __builtin_bswap16 _byteswap_ushort
+#define __builtin_bswap32 _byteswap_ulong
+#define __builtin_bswap64 _byteswap_uint64
+#endif
+
 #include "crypto/aes.h"
 #include "crypto/sha256.h"
 
@@ -134,7 +142,7 @@ void do_convert(const char *rom_file, const char *cia_file, options *opt) {
     const uint128 orig_ncch_key = {0x1F76A94DE934C053ULL, 0xB98E95CECA3E4D17ULL};
     const size_t mu = 0x200;  // media unit
     const size_t read_size = 0x800000;  // used from padxorer
-    const uint32_t zerokey[0x10] = {};
+    const uint32_t zerokey[0x10] = {0};
     int processed_files = 0;
     char magic[4];
     uint8_t title_id[8];
