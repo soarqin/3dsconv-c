@@ -19,6 +19,16 @@
 #define BE64(n) __builtin_bswap64(n)
 #define BE16(n) __builtin_bswap16(n)
 
+typedef struct {
+    int verbose;
+    int overwrite;
+    int ignore_bad_hashes;
+    char output_directory[512];
+    int total_files;
+    int allocated_files;
+    char **files;
+} options;
+
 size_t unhexlify(const char *input, uint8_t *output) {
 #define HEX_PROC(n, ch) \
     if (n == 0) break; \
@@ -63,114 +73,19 @@ void int128_to_key(uint128 *n, uint8_t *key) {
     }
 }
 
-void showhelp() {
-    fprintf(stderr, "\
-Convert Nintendo 3DS CCI (.3ds/.cci) to CIA\n\
-https://github.com/soarqin/3dsconv\n\
-\n\
-Usage: {} [options] <game> [<game>...]\n\
-\n\
-Options:\n\
-  --output=<dir>       - Save converted files in specified directory\n\
-                           Default: .\n\
-  --overwrite          - Overwrite existing converted files\n\
-  --ignore-bad-hashes  - Ignore invalid hashes and CCI files and convert anyway\n\
-  --verbose            - Print more information\n\
-}\n");
-}
-
-static const size_t mu = 0x200;  // media unit
-static const size_t read_size = 0x800000;  // used from padxorer
-static const uint32_t zerokey[0x10] = {};
-int verbose = 0;
-
-void print_v(const char *fmt, ...) {
-    if (!verbose) return;
-    va_list arglist;
-    va_start(arglist, fmt);
-    vfprintf(stderr, fmt, arglist);
-    va_end(arglist);
-    fprintf(stderr, "\n");
-}
-
 void show_progress(size_t val, size_t maxval) {
     uint32_t minval = val < maxval ? val : maxval;
     fprintf(stdout, "\r  %5.1f%% %12" PRIu64 " / %-12" PRIu64, 100. * minval / maxval, (uint64_t)minval, (uint64_t)maxval);
 }
 
-int overwrite = 0;
-int no_convert = 0;
-int ignore_bad_hashes = 0;
-char output_directory[512] = "";
-
-int total_files = 0;
-int allocated_files = 0;
-int processed_files = 0;
-char **files = NULL;
-
-uint128 orig_ncch_key;
-
-struct arg_struct {
-    int type;
-    const char *name;
-    void *var;
-} args_to_check[] = {
-    {0, "--verbose", &verbose},
-    {0, "--overwrite", &overwrite},
-    {0, "--no-convert", &no_convert},
-    {0, "--noconvert", &no_convert},
-    {0, "--ignore-bad-hashes", &ignore_bad_hashes},
-    {1, "--output", output_directory},
-    {0, NULL}
-};
-
-void parse_args(int argc, char *argv[]) {
+void cleanup(options *opt) {
     int i;
-    for(i = 1; i < argc; ++i) {
-        struct arg_struct *s;
-        char *arg = argv[i];
-        if (arg[0] == '-' && arg[1] == '-') {
-            char *n = strchr(arg, '=');
-            const char *value = NULL;
-            if (n != NULL) {
-                value = n + 1;
-                *n = 0;
-            }
-            for (s = args_to_check; s->name != NULL; ++s) {
-                if(strcmp(arg, s->name) == 0) {
-                    switch(s->type) {
-                    case 0:
-                        *(int*)s->var = value == NULL ? 1 : atoi(value);
-                        break;
-                    case 1:
-                        strcpy((char*)s->var, value);
-                        break;
-                    }
-                }
-            }
-        } else {
-            if (total_files >= allocated_files) {
-                allocated_files += 16;
-                files = (char**)realloc(files, allocated_files * sizeof(char*));
-            }
-            files[total_files++] = strdup(arg);
-        }
+    for (i = 0; i < opt->total_files; ++i) {
+        free(opt->files[i]);
     }
-}
-
-void cleanup() {
-    int i;
-    for (i = 0; i < total_files; ++i) {
-        free(files[i]);
-    }
-    free(files);
-    total_files = 0;
-    allocated_files = 0;
-}
-
-void set_keys() {
-    orig_ncch_key.lowpart = 0x1F76A94DE934C053ULL;
-    orig_ncch_key.highpart = 0xB98E95CECA3E4D17ULL;
+    free(opt->files);
+    opt->total_files = 0;
+    opt->allocated_files = 0;
 }
 
 struct chunk_record {
@@ -215,7 +130,12 @@ void writepad(FILE *f, size_t size) {
     free(data);
 }
 
-void do_convert(const char *rom_file, const char *cia_file) {
+void do_convert(const char *rom_file, const char *cia_file, options *opt) {
+    const uint128 orig_ncch_key = {0x1F76A94DE934C053ULL, 0xB98E95CECA3E4D17ULL};
+    const size_t mu = 0x200;  // media unit
+    const size_t read_size = 0x800000;  // used from padxorer
+    const uint32_t zerokey[0x10] = {};
+    int processed_files = 0;
     char magic[4];
     uint8_t title_id[8];
     char title_id_hex[17];
@@ -244,7 +164,7 @@ void do_convert(const char *rom_file, const char *cia_file) {
         fprintf(stderr, "Error: input file %s not found\n", rom_file);
         return;
     }
-    print_v("----------\nProcessing %s...", rom_file);
+    if (opt->verbose) fprintf(stderr, "----------\nProcessing %s...\n", rom_file);
     fseek(rom, 0x100, SEEK_SET);
     fread(magic, 1, 4, rom);
     if (memcmp(magic, "NCSD", 4) != 0) {
@@ -256,7 +176,7 @@ void do_convert(const char *rom_file, const char *cia_file) {
     fread(title_id, 1, 8, rom);
     *(uint64_t*)title_id = BE64(*(uint64_t*)title_id);
     hexlify(title_id, 8, title_id_hex, 1);
-    print_v("\nTitle ID: %s", title_id_hex);
+    if (opt->verbose) fprintf(stderr, "\nTitle ID: %s\n", title_id_hex);
 
     //get partition sizes
     fseek(rom, 0x120, SEEK_SET);
@@ -266,21 +186,21 @@ void do_convert(const char *rom_file, const char *cia_file) {
     fread(&readtmp2, 4, 1, rom);
     game_cxi_offset = mu * readtmp;
     game_cxi_size = mu * readtmp2;
-    print_v("\nGame Executable CXI Size: %X", game_cxi_size);
+    if (opt->verbose) fprintf(stderr, "\nGame Executable CXI Size: %X\n", game_cxi_size);
 
     // find Manual CFA
     fread(&readtmp, 4, 1, rom);
     fread(&readtmp2, 4, 1, rom);
     manual_cfa_offset = mu * readtmp;
     manual_cfa_size = mu * readtmp2;
-    print_v("Manual CFA Size: %X", manual_cfa_size);
+    if (opt->verbose) fprintf(stderr, "Manual CFA Size: %X\n", manual_cfa_size);
 
     // find Download Play child CFA
     fread(&readtmp, 4, 1, rom);
     fread(&readtmp2, 4, 1, rom);
     dlpchild_cfa_offset = mu * readtmp;
     dlpchild_cfa_size = mu * readtmp2;
-    print_v("Download Play child CFA Size: %X\n", dlpchild_cfa_size);
+    if (opt->verbose) fprintf(stderr, "Download Play child CFA Size: %X\n\n", dlpchild_cfa_size);
 
     fseek(rom, game_cxi_offset + 0x100, SEEK_SET);
     fread(magic, 1, 4, rom);
@@ -317,14 +237,14 @@ void do_convert(const char *rom_file, const char *cia_file) {
             // key_ = ROL128((ROL128(orig_ncch_key, 2) ^ key_y) + ((unsigned __int128)0x1FF9E9AAC5FE0408 << 64) + (unsigned __int128)0x024591DC5D52768A, 87);
             int128_to_key(&key_, key);
             hexlify(key, 16, keystr, 1);
-            print_v("Normal key: %s", keystr);
+            if (opt->verbose) fprintf(stderr, "Normal key: %s\n", keystr);
         }
     }
 
     fprintf(stdout, "Converting \"%s\" (%s)...\n", rom_file, zerokey_encrypted ? "zerokey encrypted" : encrypted ? "decrypted" : "encrypted");
 
     // Game Executable fist-half ExtHeader
-    print_v("\nVerifying ExtHeader...");
+    if (opt->verbose) fprintf(stderr, "\nVerifying ExtHeader...\n");
     fseek(rom, game_cxi_offset + 0x200, SEEK_SET);
     fread(extheader, 1, 0x400, rom);
     if (encrypted) {
@@ -332,7 +252,7 @@ void do_convert(const char *rom_file, const char *cia_file) {
         size_t nc_off = 0;
         uint8_t stream_block[16];
         uint8_t counter[16];
-        print_v("Decrypting ExtHeader...");
+        if (opt->verbose) fprintf(stderr, "Decrypting ExtHeader...\n");
         mbedtls_aes_init(&cont);
         mbedtls_aes_setkey_enc(&cont, key, 128);
         memcpy(counter, ctr_extheader_v, 16);
@@ -343,7 +263,7 @@ void do_convert(const char *rom_file, const char *cia_file) {
     fread(sha256sum2, 1, 0x20, rom);
     if (memcmp(sha256sum, sha256sum2, 0x20) != 0) {
         fprintf(stderr, "Error: This file may be corrupt (invalid ExtHeader hash).\n");
-        if (ignore_bad_hashes)
+        if (opt->ignore_bad_hashes)
             fprintf(stderr, "Converting anyway because --ignore-bad-hashes was passed.\n");
         else {
             fclose(rom);
@@ -352,7 +272,7 @@ void do_convert(const char *rom_file, const char *cia_file) {
     }
 
     // patch ExtHeader to make an SD title
-    print_v("Patching ExtHeader...");
+    if (opt->verbose) fprintf(stderr, "Patching ExtHeader...\n");
     extheader[0xD] |= 2;
     mbedtls_sha256(extheader, 0x400, sha256sum, 0);
 
@@ -367,7 +287,7 @@ void do_convert(const char *rom_file, const char *cia_file) {
         size_t nc_off = 0;
         uint8_t stream_block[16];
         uint8_t counter[16];
-        print_v("Re-encrypting ExtHeader...");
+        if (opt->verbose) fprintf(stderr, "Re-encrypting ExtHeader...\n");
         mbedtls_aes_init(&cont);
         mbedtls_aes_setkey_enc(&cont, key, 128);
         memcpy(counter, ctr_extheader_v, 16);
@@ -375,13 +295,13 @@ void do_convert(const char *rom_file, const char *cia_file) {
     }
 
     // Game Executable NCCH Header
-    print_v("\nReading NCCH Header of Game Executable...");
+    if (opt->verbose) fprintf(stderr, "\nReading NCCH Header of Game Executable...\n");
     fseek(rom, game_cxi_offset, SEEK_SET);
     fread(ncch_header, 1, 0x200, rom);
     memcpy(ncch_header + 0x160, sha256sum, 0x20);
 
     // get icon from ExeFS
-    print_v("Getting SMDH...");
+    if (opt->verbose) fprintf(stderr, "Getting SMDH...\n");
     exefs_offset = *(uint32_t*)(ncch_header + 0x1A0) * mu;
     fseek(rom, game_cxi_offset + exefs_offset, SEEK_SET);
     // exefs can contain up to 10 file headers but only 4 are used normally
@@ -391,7 +311,7 @@ void do_convert(const char *rom_file, const char *cia_file) {
         size_t nc_off = 0;
         uint8_t stream_block[16];
         uint8_t counter[16];
-        print_v("Decrypting ExeFS Header...");
+        if (opt->verbose) fprintf(stderr, "Decrypting ExeFS Header...\n");
         mbedtls_aes_init(&cont);
         mbedtls_aes_setkey_enc(&cont, key, 128);
         memcpy(counter, ctr_exefs_v, 16);
@@ -451,7 +371,7 @@ void do_convert(const char *rom_file, const char *cia_file) {
         return;
     }
 
-    print_v("Writing CIA header...");
+    if (opt->verbose) fprintf(stderr, "Writing CIA header...\n");
     crec = (struct chunk_record*)chunk_records;
     crec->id = 0;
     crec->index = 0;
@@ -541,9 +461,9 @@ void do_convert(const char *rom_file, const char *cia_file) {
         fprintf(stdout, "\n");
         mbedtls_sha256_finish(&ctx, sha256sum);
         mbedtls_sha256_free(&ctx);
-        print_v("Game Executable CXI SHA-256 hash:");
+        if (opt->verbose) fprintf(stderr, "Game Executable CXI SHA-256 hash:\n");
         hexlify(sha256sum, 0x20, sha256sum_str, 1);
-        print_v("  %s", sha256sum_str);
+        if (opt->verbose) fprintf(stderr, "  %s\n", sha256sum_str);
         fseek(cia, 0x38D4, SEEK_SET);
         fwrite(sha256sum, 1, 0x20, cia);
         memcpy(chunk_records + 0x10, sha256sum, 0x20);
@@ -567,9 +487,9 @@ void do_convert(const char *rom_file, const char *cia_file) {
             fprintf(stdout, "\n");
             mbedtls_sha256_finish(&ctx, sha256sum);
             mbedtls_sha256_free(&ctx);
-            print_v("Manual CFA SHA-256 hash:");
+            if (opt->verbose) fprintf(stderr, "Manual CFA SHA-256 hash:\n");
             hexlify(sha256sum, 0x20, sha256sum_str, 1);
-            print_v("  %s", sha256sum_str);
+            if (opt->verbose) fprintf(stderr, "  %s\n", sha256sum_str);
             fseek(cia, 0x3904, SEEK_SET);
             fwrite(sha256sum, 1, 0x20, cia);
             memcpy(chunk_records + 0x40, sha256sum, 0x20);
@@ -595,9 +515,9 @@ void do_convert(const char *rom_file, const char *cia_file) {
             fprintf(stdout, "\n");
             mbedtls_sha256_finish(&ctx, sha256sum);
             mbedtls_sha256_free(&ctx);
-            print_v("- Download Play child container CFA SHA-256 hash:");
+            if (opt->verbose) fprintf(stderr, "- Download Play child container CFA SHA-256 hash:\n");
             hexlify(sha256sum, 0x20, sha256sum_str, 1);
-            print_v("  %s", sha256sum_str);
+            if (opt->verbose) fprintf(stderr, "  %s\n", sha256sum_str);
             fseek(cia, 0x3904 + cr_offset, SEEK_SET);
             fwrite(sha256sum, 1, 0x20, cia);
             memcpy(chunk_records + 0x40 + cr_offset, sha256sum, 0x20);
@@ -605,11 +525,11 @@ void do_convert(const char *rom_file, const char *cia_file) {
         free(dataread);
     }
     // update final hashes
-    print_v("\nUpdating hashes...");
+    if (opt->verbose) fprintf(stderr, "\nUpdating hashes...\n");
     mbedtls_sha256(chunk_records, (uint8_t*)crec - chunk_records, sha256sum, 0);
-    print_v("Content chunk records SHA-256 hash:");
+    if (opt->verbose) fprintf(stderr, "Content chunk records SHA-256 hash:\n");
     hexlify(sha256sum, 0x20, sha256sum_str, 1);
-    print_v("  %s", sha256sum_str);
+    if (opt->verbose) fprintf(stderr, "  %s\n", sha256sum_str);
     fseek(cia, 0x2FC7, SEEK_SET);
     write8(cia, content_count);
     fwrite(sha256sum, 1, 0x20, cia);
@@ -625,9 +545,9 @@ void do_convert(const char *rom_file, const char *cia_file) {
         mbedtls_sha256_update(&ctx, zerodata, 0x8DC);
         mbedtls_sha256_finish(&ctx, sha256sum);
         mbedtls_sha256_free(&ctx);
-        print_v("Content info records SHA-256 hash:");
+        if (opt->verbose) fprintf(stderr, "Content info records SHA-256 hash:\n");
         hexlify(sha256sum, 0x20, sha256sum_str, 1);
-        print_v("  %s", sha256sum_str);
+        if (opt->verbose) fprintf(stderr, "  %s\n", sha256sum_str);
         fseek(cia, 0x2FA4, SEEK_SET);
         fwrite(sha256sum, 1, 0x20, cia);
     }
@@ -640,10 +560,82 @@ void do_convert(const char *rom_file, const char *cia_file) {
     writepad(cia, 0xFC);
     fwrite(exefs_icon, 1, 0x36C0, cia);
 
-    fprintf(stdout, "Done converting %u out of %u files.", ++processed_files, total_files);
+    fprintf(stdout, "Done converting %u out of %u files.", ++processed_files, opt->total_files);
 
     fclose(cia);
     fclose(rom);
+}
+
+
+void showhelp() {
+    fprintf(stderr, "\
+Convert Nintendo 3DS CCI (.3ds/.cci) to CIA\n\
+https://github.com/soarqin/3dsconv\n\
+\n\
+Usage: {} [options] <game> [<game>...]\n\
+\n\
+Options:\n\
+  --output=<dir>       - Save converted files in specified directory\n\
+                           Default: .\n\
+  --overwrite          - Overwrite existing converted files\n\
+  --ignore-bad-hashes  - Ignore invalid hashes and CCI files and convert anyway\n\
+  --verbose            - Print more information\n\
+}\n");
+}
+
+struct arg_struct {
+    int type;
+    const char *name;
+    void *var;
+};
+
+void parse_args(int argc, char *argv[], options *opt) {
+    struct arg_struct args_to_check[] = {
+            {0, "--verbose", &opt->verbose},
+            {0, "--overwrite", &opt->overwrite},
+            {0, "--ignore-bad-hashes", &opt->ignore_bad_hashes},
+            {1, "--output", opt->output_directory},
+            {0, NULL}
+    };
+    int i;
+
+    opt->verbose = 0;
+    opt->overwrite = 0;
+    opt->ignore_bad_hashes = 0;
+    opt->output_directory[0] = 0;
+    opt->total_files = 0;
+    opt->allocated_files = 0;
+    opt->files = NULL;
+    for(i = 1; i < argc; ++i) {
+        struct arg_struct *s;
+        char *arg = argv[i];
+        if (arg[0] == '-' && arg[1] == '-') {
+            char *n = strchr(arg, '=');
+            const char *value = NULL;
+            if (n != NULL) {
+                value = n + 1;
+                *n = 0;
+            }
+            for (s = args_to_check; s->name != NULL; ++s) {
+                if(strcmp(arg, s->name) == 0) {
+                    switch(s->type) {
+                        case 0:
+                            *(int*)s->var = value == NULL ? 1 : atoi(value);
+                            break;
+                        case 1:
+                            strcpy((char*)s->var, value);
+                            break;
+                    }
+                }
+            }
+        } else {
+            if (opt->total_files >= opt->allocated_files) {
+                opt->allocated_files += 16;
+                opt->files = (char**)realloc(opt->files, opt->allocated_files * sizeof(char*));
+            }
+            opt->files[opt->total_files++] = strdup(arg);
+        }
+    }
 }
 
 #ifdef _WIN32
@@ -676,43 +668,46 @@ static void makedirs(const char *dir) {
 
 int main(int argc, char *argv[]) {
     int i;
+    options opt;
 
     fprintf(stderr, "3dsconv %s\n", PROGRAM_VERSION);
-    parse_args(argc, argv);
+    if (argc < 2) {
+        showhelp();
+        return 1;
+    }
+    parse_args(argc, argv, &opt);
 
-    if (total_files == 0 || files == NULL) {
+    if (opt.total_files == 0 || opt.files == NULL) {
         fprintf(stderr, "Error: No files were given\n");
         exit(1);
     }
 
-    set_keys();
-
-    if (output_directory[0] != 0) {
-        size_t l = strlen(output_directory);
-        if (!is_slash(output_directory[l - 1])) {
-            output_directory[l] = slash_char;
-            output_directory[l + 1] = 0;
+    if (opt.output_directory[0] != 0) {
+        size_t l = strlen(opt.output_directory);
+        if (!is_slash(opt.output_directory[l - 1])) {
+            opt.output_directory[l] = slash_char;
+            opt.output_directory[l + 1] = 0;
         }
-        makedirs(output_directory);
+        makedirs(opt.output_directory);
     }
 
-    for (i = 0; i < total_files; ++i) {
+    for (i = 0; i < opt.total_files; ++i) {
         char cia_file[512];
-        if (output_directory[0] != 0) {
-            const char *t1 = strrchr(files[i], '/');
+        if (opt.output_directory[0] != 0) {
+            const char *t1 = strrchr(opt.files[i], '/');
             if ('/' != slash_char) {
-                const char *t2 = strrchr(files[i], slash_char);
+                const char *t2 = strrchr(opt.files[i], slash_char);
                 if (t2 > t1) t1 = t2;
             }
-            strcpy(cia_file, output_directory);
-            strcat(cia_file, t1 = NULL ? files[i] : t1);
+            strcpy(cia_file, opt.output_directory);
+            strcat(cia_file, t1 == NULL ? opt.files[i] : t1);
         } else {
-            strcpy(cia_file, files[i]);
+            strcpy(cia_file, opt.files[i]);
         }
         char *r = strrchr(cia_file, '.');
         if (r == NULL) strcat(cia_file, ".cia");
         else strcpy(r, ".cia");
-        if (!overwrite) {
+        if (!opt.overwrite) {
             FILE *check = fopen(cia_file, "rb");
             if (check != NULL) {
                 fclose(check);
@@ -720,9 +715,9 @@ int main(int argc, char *argv[]) {
                 continue;
             }
         }
-        do_convert(files[i], cia_file);
+        do_convert(opt.files[i], cia_file, &opt);
     }
 
-    cleanup();
+    cleanup(&opt);
     return 0;
 }
