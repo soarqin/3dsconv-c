@@ -120,7 +120,7 @@ struct arg_struct {
     {0, "--no-convert", &no_convert},
     {0, "--noconvert", &no_convert},
     {0, "--ignore-bad-hashes", &ignore_bad_hashes},
-    {1, "--output", &output_directory},
+    {1, "--output", output_directory},
     {0, NULL}
 };
 
@@ -143,7 +143,7 @@ void parse_args(int argc, char *argv[]) {
                         *(int*)s->var = value == NULL ? 1 : atoi(value);
                         break;
                     case 1:
-                        strcpy(*(char**)s->var, value);
+                        strcpy((char*)s->var, value);
                         break;
                     }
                 }
@@ -215,7 +215,7 @@ void writepad(FILE *f, size_t size) {
     free(data);
 }
 
-void do_convert(const char *rom_file) {
+void do_convert(const char *rom_file, const char *cia_file) {
     char magic[4];
     uint8_t title_id[8];
     char title_id_hex[17];
@@ -237,28 +237,12 @@ void do_convert(const char *rom_file) {
     uint32_t tmd_padding, content_count, tmd_size, content_index;
     uint8_t chunk_records[0x90];
     struct chunk_record *crec;
-    char cia_file[512];
     char sha256sum_str[0x41];
     FILE *cia;
     FILE *rom = fopen(rom_file, "rb");
     if (rom == NULL) {
         fprintf(stderr, "Error: input file %s not found\n", rom_file);
         return;
-    }
-    {
-        strcpy(cia_file, rom_file);
-        char *r = strrchr(cia_file, '.');
-        if (r == NULL) strcat(cia_file, ".cia");
-        else strcpy(r, ".cia");
-        if (!overwrite) {
-            FILE *check = fopen(cia_file, "rb");
-            if (check != NULL) {
-                fclose(check);
-                fclose(rom);
-                fprintf(stderr, "\"%s\" already exists. Use `--overwrite' to force conversion.\n", cia_file);
-                return;
-            }
-        }
     }
     print_v("----------\nProcessing %s...", rom_file);
     fseek(rom, 0x100, SEEK_SET);
@@ -662,6 +646,34 @@ void do_convert(const char *rom_file) {
     fclose(rom);
 }
 
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(d, p) _mkdir(d)
+#define is_slash(d) (((d) == '/') || ((d) == '\\'))
+#define slash_char '\\'
+#else
+#define is_slash(d) ((d) == '/')
+#define slash_char '/'
+#endif
+
+static void makedirs(const char *dir) {
+    char tmp[512];
+    char *p = NULL;
+    size_t len;
+
+    snprintf(tmp, sizeof(tmp), "%s", dir);
+    len = strlen(tmp);
+    if(is_slash(tmp[len - 1]))
+        tmp[len - 1] = 0;
+    for(p = tmp + 1; *p; p++)
+        if(is_slash(*p)) {
+            *p = 0;
+            mkdir(tmp, S_IRWXU);
+            *p = slash_char;
+        }
+    mkdir(tmp, S_IRWXU);
+}
+
 int main(int argc, char *argv[]) {
     int i;
 
@@ -675,14 +687,41 @@ int main(int argc, char *argv[]) {
 
     set_keys();
 
-/*
-# create output directory if it doesn't exist
-if output_directory != '':
-    os.makedirs(output_directory, exist_ok=True)
-*/
+    if (output_directory[0] != 0) {
+        size_t l = strlen(output_directory);
+        if (!is_slash(output_directory[l - 1])) {
+            output_directory[l] = slash_char;
+            output_directory[l + 1] = 0;
+        }
+        makedirs(output_directory);
+    }
 
-    for (i = 0; i < total_files; ++i)
-        do_convert(files[i]);
+    for (i = 0; i < total_files; ++i) {
+        char cia_file[512];
+        if (output_directory[0] != 0) {
+            const char *t1 = strrchr(files[i], '/');
+            if ('/' != slash_char) {
+                const char *t2 = strrchr(files[i], slash_char);
+                if (t2 > t1) t1 = t2;
+            }
+            strcpy(cia_file, output_directory);
+            strcat(cia_file, t1 = NULL ? files[i] : t1);
+        } else {
+            strcpy(cia_file, files[i]);
+        }
+        char *r = strrchr(cia_file, '.');
+        if (r == NULL) strcat(cia_file, ".cia");
+        else strcpy(r, ".cia");
+        if (!overwrite) {
+            FILE *check = fopen(cia_file, "rb");
+            if (check != NULL) {
+                fclose(check);
+                fprintf(stderr, "\"%s\" already exists. Use `--overwrite' to force conversion.\n", cia_file);
+                continue;
+            }
+        }
+        do_convert(files[i], cia_file);
+    }
 
     cleanup();
     return 0;
