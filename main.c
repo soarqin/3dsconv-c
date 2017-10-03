@@ -24,7 +24,7 @@
 void showhelp() {
     fprintf(stderr, "\
 Convert Nintendo 3DS CCI (.3ds/.cci) to CIA\n\
-https://github.com/soarqin/3dsconv\n\
+https://github.com/soarqin/3dsconv-c\n\
 \n\
 Usage: {} [options] <game> [<game>...]\n\
 \n\
