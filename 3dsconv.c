@@ -203,7 +203,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         }
     }
 
-    fprintf(stdout, "Converting \"%s\" (%s)...\n", rom_file, zerokey_encrypted ? "zerokey encrypted" : encrypted ? "decrypted" : "encrypted");
+    fprintf(stdout, "Converting \"%s\" (%s)...\n", rom_file, zerokey_encrypted ? "zerokey encrypted" : (encrypted ? "encrypted" : "decrypted"));
 
     // Game Executable fist-half ExtHeader
     if (opt->verbose) fprintf(stderr, "\nVerifying ExtHeader...\n");
@@ -219,6 +219,33 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         mbedtls_aes_setkey_enc(&cont, key, 128);
         memcpy(counter, ctr_extheader_v, 16);
         mbedtls_aes_crypt_ctr(&cont, 0x800, &nc_off, counter, stream_block, extheader, extheader);
+
+        if (!opt->no_firmware_spoof) {
+            // Kernel version spoof
+            //   when highest 12bit is 0b1111110xxxxx: Bits 8-15: Major version; Bits 0-7: Minor version
+            uint32_t i;
+            for (i = 0; i < 28; ++i) {
+                uint32_t desc = *(uint32_t*)(extheader + 0x370 + i * 4);
+                if (desc >> 25 == 0x7E) {
+                    if ((desc & 0xFFFFu) <= 0x221) break;
+                    desc = (desc & ~0xFFFFu) | 0x220;
+                    if (opt->verbose) fprintf(stderr, "Spoofing kernel version in 1st-half ExtHeader...\n");
+                    *(uint32_t*)(extheader + 0x370 + i * 4) = desc;
+                    break;
+                }
+            }
+            for (i = 0; i < 28; ++i) {
+                uint32_t desc = *(uint32_t*)(extheader + 0x770 + i * 4);
+                if (desc >> 25 == 0x7E) {
+                    if ((desc & 0xFFFFu) <= 0x221) break;
+                    desc = (desc & ~0xFFFFu) | 0x220;
+                    if (opt->verbose) fprintf(stderr, "Spoofing kernel version in 1st-half ExtHeader...\n");
+                    *(uint32_t*)(extheader + 0x770 + i * 4) = desc;
+                    break;
+                }
+            }
+            return;
+        }
     }
     mbedtls_sha256(extheader, 0x400, sha256sum, 0);
     fseek(rom, 0x4160, SEEK_SET);

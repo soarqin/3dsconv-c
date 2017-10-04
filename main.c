@@ -33,6 +33,7 @@ Options:\n\
                            Default: .\n\
   --overwrite          - Overwrite existing converted files\n\
   --ignore-bad-hashes  - Ignore invalid hashes and CCI files and convert anyway\n\
+  --no-fw-spoof        - Do not spoof firmware version\n\
   --verbose            - Print more information\n\
 }\n");
 }
@@ -73,6 +74,7 @@ int main(int argc, char *argv[]) {
         {0, "--verbose", &opt.verbose},
         {0, "--overwrite", &overwrite},
         {0, "--ignore-bad-hashes", &opt.ignore_bad_hashes},
+        {0, "--no-fw-spoof", &opt.no_firmware_spoof},
         {1, "--output", output_directory},
         {0, NULL}
     };
@@ -85,6 +87,7 @@ int main(int argc, char *argv[]) {
 
     opt.verbose = 0;
     opt.ignore_bad_hashes = 0;
+    opt.no_firmware_spoof = 0;
     for (i = 1; i < argc; ++i) {
         struct arg_struct *s;
         char *arg = argv[i];
