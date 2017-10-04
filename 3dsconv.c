@@ -108,9 +108,9 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     uint8_t ctr_extheader_v[16] = {0};
     uint8_t ctr_exefs_v[16] = {0};
     uint8_t key[16];
-    uint8_t extheader[0x400], ncch_header[0x200];
+    uint8_t extheader[0x800], ncch_header[0x200];
     uint8_t sha256sum[0x20], sha256sum2[0x20];
-    uint8_t dependency_list[0x180], save_size[4];
+    uint8_t dependency_list[0x180], save_size[8];
     uint32_t exefs_offset;
     uint8_t exefs_file_header[0x40];
     uint8_t exefs_icon[0x36C0];
@@ -208,7 +208,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     // Game Executable fist-half ExtHeader
     if (opt->verbose) fprintf(stderr, "\nVerifying ExtHeader...\n");
     fseek(rom, game_cxi_offset + 0x200, SEEK_SET);
-    fread(extheader, 1, 0x400, rom);
+    fread(extheader, 1, 0x800, rom);
     if (encrypted) {
         mbedtls_aes_context cont;
         size_t nc_off = 0;
@@ -218,7 +218,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         mbedtls_aes_init(&cont);
         mbedtls_aes_setkey_enc(&cont, key, 128);
         memcpy(counter, ctr_extheader_v, 16);
-        mbedtls_aes_crypt_ctr(&cont, 0x400, &nc_off, counter, stream_block, extheader, extheader);
+        mbedtls_aes_crypt_ctr(&cont, 0x800, &nc_off, counter, stream_block, extheader, extheader);
     }
     mbedtls_sha256(extheader, 0x400, sha256sum, 0);
     fseek(rom, 0x4160, SEEK_SET);
@@ -242,7 +242,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     memcpy(dependency_list, extheader + 0x40, 0x180);
 
     // get save data size for tmd
-    memcpy(save_size, extheader + 0x1C0, 4);
+    memcpy(save_size, extheader + 0x1C0, 8);
 
     if (encrypted) {
         mbedtls_aes_context cont;
@@ -253,7 +253,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         mbedtls_aes_init(&cont);
         mbedtls_aes_setkey_enc(&cont, key, 128);
         memcpy(counter, ctr_extheader_v, 16);
-        mbedtls_aes_crypt_ctr(&cont, 0x400, &nc_off, counter, stream_block, extheader, extheader);
+        mbedtls_aes_crypt_ctr(&cont, 0x800, &nc_off, counter, stream_block, extheader, extheader);
     }
 
     // Game Executable NCCH Header
@@ -389,12 +389,12 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
 
     // write save size in tmd
     fseek(cia, 0x2F5A, SEEK_SET);
-    fwrite(save_size, 1, 4, cia);
+    fwrite(save_size, 1, 8, cia);
 
-    // Game Executable CXI NCCH Header + first-half ExHeader
+    // Game Executable CXI NCCH Header + ExHeader
     fseek(cia, 0, SEEK_END);
     fwrite(ncch_header, 1, 0x200, cia);
-    fwrite(extheader, 1, 0x400, cia);
+    fwrite(extheader, 1, 0x800, cia);
 
     {
         size_t cr_offset = 0;
@@ -405,12 +405,12 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         mbedtls_sha256_init(&ctx);
         mbedtls_sha256_starts(&ctx, 0);
         mbedtls_sha256_update(&ctx, ncch_header, 0x200);
-        mbedtls_sha256_update(&ctx, extheader, 0x400);
+        mbedtls_sha256_update(&ctx, extheader, 0x800);
 
-        //Game Executable CXI second-half ExHeader + contents
+        //Game Executable CXI contents
         fprintf(stdout, "Writing Game Executable CXI...\n");
-        fseek(rom, game_cxi_offset + 0x200 + 0x400, SEEK_SET);
-        left = game_cxi_size - 0x200 - 0x400;
+        fseek(rom, game_cxi_offset + 0x200 + 0x800, SEEK_SET);
+        left = game_cxi_size - 0x200 - 0x800;
         dataread = (uint8_t*)malloc(read_size);
         while(left > 0) {
             size_t to_read = read_size < left ? read_size : left;
