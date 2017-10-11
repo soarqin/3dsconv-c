@@ -20,7 +20,7 @@
 
 #include "uint128.h"
 
-#define BE32(n) __builtin_bswap32(n)
+#define BE32(n) (uint32_t)__builtin_bswap32((unsigned long)n)
 #define BE64(n) __builtin_bswap64(n)
 #define BE16(n) __builtin_bswap16(n)
 
@@ -47,7 +47,7 @@ void int128_to_key(uint128 *n, uint8_t *key) {
 }
 
 void show_progress(size_t val, size_t maxval) {
-    uint32_t minval = val < maxval ? val : maxval;
+    size_t minval = val < maxval ? val : maxval;
     fprintf(stdout, "\r  %5.1f%% %12" PRIu64 " / %-12" PRIu64, 100. * minval / maxval, (uint64_t)minval, (uint64_t)maxval);
 }
 
@@ -111,7 +111,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     uint8_t extheader[0x800], ncch_header[0x200];
     uint8_t sha256sum[0x20], sha256sum2[0x20];
     uint8_t dependency_list[0x180], save_size[8];
-    uint32_t exefs_offset;
+    size_t exefs_offset;
     uint8_t exefs_file_header[0x40];
     uint8_t exefs_icon[0x36C0];
     int header_num;
@@ -148,30 +148,30 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     fread(&readtmp2, 4, 1, rom);
     game_cxi_offset = mu * readtmp;
     game_cxi_size = mu * readtmp2;
-    if (opt->verbose) fprintf(stderr, "\nGame Executable CXI Size: %X\n", game_cxi_size);
+    if (opt->verbose) fprintf(stderr, "\nGame Executable CXI Size: %" PRIX64 "\n", (uint64_t)game_cxi_size);
 
     // find Manual CFA
     fread(&readtmp, 4, 1, rom);
     fread(&readtmp2, 4, 1, rom);
     manual_cfa_offset = mu * readtmp;
     manual_cfa_size = mu * readtmp2;
-    if (opt->verbose) fprintf(stderr, "Manual CFA Size: %X\n", manual_cfa_size);
+    if (opt->verbose) fprintf(stderr, "Manual CFA Size: %" PRIX64 "\n", (uint64_t)manual_cfa_size);
 
     // find Download Play child CFA
     fread(&readtmp, 4, 1, rom);
     fread(&readtmp2, 4, 1, rom);
     dlpchild_cfa_offset = mu * readtmp;
     dlpchild_cfa_size = mu * readtmp2;
-    if (opt->verbose) fprintf(stderr, "Download Play child CFA Size: %X\n\n", dlpchild_cfa_size);
+    if (opt->verbose) fprintf(stderr, "Download Play child CFA Size: %" PRIX64 "\n\n", (uint64_t)dlpchild_cfa_size);
 
-    fseek(rom, game_cxi_offset + 0x100, SEEK_SET);
+    fseek(rom, (long)(game_cxi_offset + 0x100), SEEK_SET);
     fread(magic, 1, 4, rom);
     if (memcmp(magic, "NCCH", 4) != 0) {
         fprintf(stderr, "Error: \"%s\" is not a CCI file (missing NCCH magic).\n", rom_file);
         fclose(rom);
         return;
     }
-    fseek(rom, game_cxi_offset + 0x18F, SEEK_SET);
+    fseek(rom, (long)(game_cxi_offset + 0x18F), SEEK_SET);
     uint8_t encryption_bitmask;
     fread(&encryption_bitmask, 1, 1, rom);
     encrypted = (encryption_bitmask & 0x4) == 0;
@@ -186,7 +186,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         else {
             uint128 key_y, key_, tmp;
             char keystr[33];
-            fseek(rom, game_cxi_offset, SEEK_SET);
+            fseek(rom, (long)game_cxi_offset, SEEK_SET);
             fread(&key_y, 16, 1, rom);
             uint128_bswap(&key_y);
             key_ = orig_ncch_key;
@@ -207,7 +207,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
 
     // Game Executable fist-half ExtHeader
     if (opt->verbose) fprintf(stderr, "\nVerifying ExtHeader...\n");
-    fseek(rom, game_cxi_offset + 0x200, SEEK_SET);
+    fseek(rom, (long)(game_cxi_offset + 0x200), SEEK_SET);
     fread(extheader, 1, 0x800, rom);
     if (encrypted) {
         mbedtls_aes_context cont;
@@ -283,14 +283,14 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
 
     // Game Executable NCCH Header
     if (opt->verbose) fprintf(stderr, "\nReading NCCH Header of Game Executable...\n");
-    fseek(rom, game_cxi_offset, SEEK_SET);
+    fseek(rom, (long)game_cxi_offset, SEEK_SET);
     fread(ncch_header, 1, 0x200, rom);
     memcpy(ncch_header + 0x160, sha256sum, 0x20);
 
     // get icon from ExeFS
     if (opt->verbose) fprintf(stderr, "Getting SMDH...\n");
     exefs_offset = *(uint32_t*)(ncch_header + 0x1A0) * mu;
-    fseek(rom, game_cxi_offset + exefs_offset, SEEK_SET);
+    fseek(rom, (long)(game_cxi_offset + exefs_offset), SEEK_SET);
     // exefs can contain up to 10 file headers but only 4 are used normally
     fread(exefs_file_header, 1, 0x40, rom);
     if (encrypted) {
@@ -307,7 +307,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     for (header_num = 0; header_num < 4; ++header_num) {
         if (memcmp(exefs_file_header + header_num * 0x10, "icon\0\0\0\0", 8) == 0) {
             uint32_t exefs_icon_offset = *(uint32_t*)(exefs_file_header + 0x8 + (header_num * 0x10));
-            fseek(rom, exefs_icon_offset + 0x200 - 0x40, SEEK_CUR);
+            fseek(rom, (long)(exefs_icon_offset + 0x200 - 0x40), SEEK_CUR);
             fread(exefs_icon, 1, 0x36C0, rom);
             if (encrypted) {
 		        mbedtls_aes_context cont;
@@ -434,7 +434,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
 
         //Game Executable CXI contents
         fprintf(stdout, "Writing Game Executable CXI...\n");
-        fseek(rom, game_cxi_offset + 0x200 + 0x800, SEEK_SET);
+        fseek(rom, (long)(game_cxi_offset + 0x200 + 0x800), SEEK_SET);
         left = game_cxi_size - 0x200 - 0x800;
         dataread = (uint8_t*)malloc(read_size);
         while(left > 0) {
@@ -459,7 +459,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         if (manual_cfa_offset != 0) {
             fseek(cia, 0, SEEK_END);
             fprintf(stdout, "Writing Manual CFA...\n");
-            fseek(rom, manual_cfa_offset, SEEK_SET);
+            fseek(rom, (long)manual_cfa_offset, SEEK_SET);
             left = manual_cfa_size;
             mbedtls_sha256_init(&ctx);
             mbedtls_sha256_starts(&ctx, 0);
@@ -487,7 +487,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         if (dlpchild_cfa_offset != 0) {
             fseek(cia, 0, SEEK_END);
             fprintf(stdout, "Writing Download Play child container CFA...\n");
-            fseek(rom, dlpchild_cfa_offset, SEEK_SET);
+            fseek(rom, (long)dlpchild_cfa_offset, SEEK_SET);
             left = dlpchild_cfa_size;
             mbedtls_sha256_init(&ctx);
             mbedtls_sha256_starts(&ctx, 0);
@@ -505,7 +505,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
             if (opt->verbose) fprintf(stderr, "- Download Play child container CFA SHA-256 hash:\n");
             hexlify(sha256sum, 0x20, sha256sum_str, 1);
             if (opt->verbose) fprintf(stderr, "  %s\n", sha256sum_str);
-            fseek(cia, 0x3904 + cr_offset, SEEK_SET);
+            fseek(cia, (long)(0x3904 + cr_offset), SEEK_SET);
             fwrite(sha256sum, 1, 0x20, cia);
             memcpy(chunk_records + 0x40 + cr_offset, sha256sum, 0x20);
         }
