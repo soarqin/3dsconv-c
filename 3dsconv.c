@@ -116,7 +116,8 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     uint8_t exefs_icon[0x36C0];
     int header_num;
     int exefs_icon_found = 0;
-    uint32_t tmd_padding, content_count, tmd_size, content_index;
+    uint32_t tmd_padding, content_count, tmd_size;
+    uint8_t content_index;
     uint8_t chunk_records[0x90];
     struct chunk_record *crec;
     char sha256sum_str[0x41];
