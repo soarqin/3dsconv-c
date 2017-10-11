@@ -1,6 +1,6 @@
 #define PROGRAM_VERSION "1.1"
 
-#include "3dsconv.h"
+#include "3ds/3dsconv.h"
 
 #ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS

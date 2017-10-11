@@ -8,8 +8,8 @@
 #define __builtin_bswap64 _byteswap_uint64
 #endif
 
-#include "crypto/aes.h"
-#include "crypto/sha256.h"
+#include "mbedtls/aes.h"
+#include "mbedtls/sha256.h"
 
 #include <inttypes.h>
 #include <stdlib.h>
