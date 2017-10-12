@@ -1,9 +1,8 @@
-#ifndef __UINT128_H_
-#define __UINT128_H_
+#include "bn.h"
 
-typedef struct uint128 {
-    uint64_t lowpart, highpart;
-} uint128;
+#include <stdio.h>
+#include <stdlib.h>
+#include <inttypes.h>
 
 void uint128_bswap(uint128 *n) {
     uint64_t v = __builtin_bswap64(n->highpart);
@@ -17,11 +16,11 @@ void uint128_xor(uint128 *n, uint128 *n2) {
 }
 
 void uint128_lshift(uint128 *n, size_t shift) {
-    if(shift >= 128) {
+    if (shift >= 128) {
         n->lowpart = n->highpart = 0;
         return;
     }
-    if(shift >= 64) {
+    if (shift >= 64) {
         n->highpart = n->lowpart << (shift - 64);
         n->lowpart = 0;
         return;
@@ -31,11 +30,11 @@ void uint128_lshift(uint128 *n, size_t shift) {
 }
 
 void uint128_rshift(uint128 *n, size_t shift) {
-    if(shift >= 128) {
+    if (shift >= 128) {
         n->lowpart = n->highpart = 0;
         return;
     }
-    if(shift >= 64) {
+    if (shift >= 64) {
         n->lowpart = n->highpart >> (shift - 64);
         n->highpart = 0;
         return;
@@ -63,5 +62,3 @@ void uint128_rol(uint128 *n, size_t bits) {
 void uint128_print(uint128 *n) {
     fprintf(stderr, "%016" PRIx64 "%016" PRIx64 "\n", n->highpart, n->lowpart);
 }
-
-#endif // __UINT128_H_

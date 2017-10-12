@@ -30,8 +30,8 @@ typedef struct {
     uint8_t ca_crl_version;
     uint8_t signer_crl_version;
     uint8_t padding2;
-    uint8_t system_version[8];
-    uint8_t title_id[8];
+    uint64_t system_version;
+    uint64_t title_id;
     uint32_t title_type;
     uint16_t group_id;
     uint32_t savedata_size;

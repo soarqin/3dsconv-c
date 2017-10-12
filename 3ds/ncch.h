@@ -9,11 +9,11 @@ typedef struct {
     uint8_t signature[0x100];
     uint8_t magic[4];
     uint32_t content_size;
-    uint8_t title_id[8];
+    uint64_t title_id;
     uint16_t maker_code;
     uint16_t version;
     uint32_t seed_check;
-    uint8_t program_id[8];
+    uint64_t program_id;
     uint8_t reserved1[0x10];
     uint8_t logohash[0x20];
     uint8_t product_code[0x10];
@@ -92,7 +92,7 @@ __attribute__((packed))
 ExHeaderCodeSetInfo;
 
 typedef struct {
-    uint8_t program_id[0x30][8];
+    uint64_t program_id[0x30];
 }
 #ifdef __GNUC__
 __attribute__((packed))
@@ -101,7 +101,7 @@ ExHeaderDependencyList;
 
 typedef struct {
     uint64_t savedata_size;
-    uint8_t jump_id[8];
+    uint64_t jump_id;
     uint8_t reserved2[0x30];
 }
 #ifdef __GNUC__
@@ -110,8 +110,8 @@ __attribute__((packed))
 ExHeaderSystemInfo;
 
 typedef struct {
-    uint8_t ext_savedata_id[8];
-    uint8_t system_savedata_id[8];
+    uint64_t ext_savedata_id;
+    uint64_t system_savedata_id;
     uint8_t accessible_unique_ids[8];
     uint8_t access_info[7];
     uint8_t other_attributes;
@@ -123,7 +123,7 @@ ExHeaderStorageInfo;
 
 typedef struct
 {
-    uint8_t program_id[8];
+    uint64_t program_id;
     uint32_t core_version;
     uint32_t flag;
     uint8_t resource_limit_descriptor[0x10][2];
@@ -138,7 +138,7 @@ __attribute__((packed))
 ExHeaderARM11SystemLocalCaps;
 
 typedef struct {
-    uint8_t program_id[8];
+    uint64_t program_id;
     uint32_t core_version;
 
     // flag
@@ -168,7 +168,7 @@ __attribute__((packed))
 ExHeaderARM11SystemLocalCapsDeserialised;
 
 typedef struct {
-    uint8_t descriptors[28][4];
+    uint32_t descriptors[28];
     uint8_t reserved[0x10];
 }
 #ifdef __GNUC__
@@ -204,12 +204,16 @@ typedef struct {
         ExHeaderARM11SystemLocalCaps arm11_system_local_caps;
         ExHeaderARM11KernelCapabilities arm11_kernel_caps;
         ExHeaderARM9AccessControl arm9_access_control;
-    } accessdesc;
+    } access_desc;
 }
 #ifdef __GNUC__
 __attribute__((packed))
 #endif
 ExHeader;
+
+void ncch_exheader_spoof_version(ExHeader *exheader, uint16_t targetver, uint16_t origver[2]);
+void ncch_exheader_get_hash(ExHeader *exheader, uint8_t hash[0x20]);
+void ncch_fix_exheader_hash(NCCHHeader *ncch, ExHeader *exheader);
 
 #pragma pack(pop)
 

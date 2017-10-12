@@ -1,12 +1,8 @@
-#include "3dsconv.h"
-
 #ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS
-#define _CRT_NONSTDC_NO_WARNINGS
-#define __builtin_bswap16 _byteswap_ushort
-#define __builtin_bswap32 _byteswap_ulong
-#define __builtin_bswap64 _byteswap_uint64
 #endif
+
+#include "3dsconv.h"
 
 #include "mbedtls/aes.h"
 #include "mbedtls/sha256.h"
@@ -18,11 +14,7 @@
 
 #include "data.inl"
 
-#include "uint128.h"
-
-#define BE32(n) (uint32_t)__builtin_bswap32((unsigned long)n)
-#define BE64(n) __builtin_bswap64(n)
-#define BE16(n) __builtin_bswap16(n)
+#include "bn.h"
 
 void hexlify(const uint8_t *input, size_t len, char *output, int upper) {
     size_t i;
@@ -36,7 +28,7 @@ void hexlify(const uint8_t *input, size_t len, char *output, int upper) {
     *output = 0;
 }
 
-void int128_to_key(uint128 *n, uint8_t *key) {
+static void int128_to_key(uint128 *n, uint8_t *key) {
     int i;
     for(i = 56; i >= 0; i -= 8) {
         *key++ = (uint8_t)(n->highpart >> i);
@@ -93,7 +85,77 @@ void writepad(FILE *f, size_t size) {
     free(data);
 }
 
+#include "ncsd.h"
+
 void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
+    NCSDContext ncsd;
+    int i, result;
+    ExeFSHeader exefs_header;
+    uint8_t *smdh = NULL;
+    uint32_t smdh_size = 0;
+
+    if (opt->verbose) fprintf(stderr, "----------\nProcessing %s...\n", rom_file);
+    result = ncsd_open(&ncsd, rom_file);
+    switch (result) {
+        case NCSD_FILE_NOT_FOUND:
+            fprintf(stderr, "Error: input file \"%s\" not found\n", rom_file);
+            return;
+        case NCSD_INVALID_NCSD_HEADER:
+            fprintf(stderr, "Error: \"%s\" is not a CCI file (missing NCSD magic).\n", rom_file);
+            return;
+        case NCSD_INVALID_NCCH_HEADER:
+            fprintf(stderr, "Error: \"%s\" is not a CCI file (missing NCCH magic).\n", rom_file);
+            return;
+        case NCSD_WRONG_EXHEADER_HASH:
+            fprintf(stderr, "Error: This file may be corrupt (invalid ExtHeader hash).\n");
+            if (!opt->ignore_bad_hashes)
+                return;
+            fprintf(stderr, "Converting anyway because --ignore-bad-hashes was passed.\n");
+            break;
+    }
+    if (opt->verbose) fprintf(stderr, "\nTitle ID: %016" PRIX64 "\n", ncsd.header.media_id);
+    if (ncsd.encrypted == 1 && opt->verbose) {
+        char keystr[33];
+        hexlify(ncsd.calc_key, 16, keystr, 1);
+        fprintf(stderr, "Normal key: %s\n", keystr);
+    }
+    fprintf(stdout, "Converting \"%s\" (%s)...\n", rom_file, ncsd.encrypted == 2 ? "zerokey encrypted" : (ncsd.encrypted == 1 ? "encrypted" : "decrypted"));
+
+    // Spoof firmware version
+    if (!opt->no_firmware_spoof) {
+        uint16_t origver[2];
+        ncch_exheader_spoof_version(&ncsd.exheader, 0x220, origver);
+        if (opt->verbose) {
+            if (origver[0] != 0)
+                fprintf(stderr, "Spoofed kernel version(original: %04X) in 1st-half ExtHeader...\n", origver[0]);
+            if (origver[1] != 0)
+                fprintf(stderr, "Spoofed kernel version(original: %04X) in 2nd-half ExtHeader...\n", origver[1]);
+        }
+    }
+
+    // Make a SD Application
+    if (opt->verbose) fprintf(stderr, "Patching Extended Header...\n");
+    ncsd.exheader.codeset_info.flags.flag |= 0x02;
+    ncch_fix_exheader_hash(&ncsd.ncch, &ncsd.exheader);
+
+    ncsd_read_exefs_header(&ncsd, &exefs_header);
+    for (i = 0; i < 10; ++i) {
+        if (memcmp(exefs_header.file_header[i].name, "icon\0\0\0\0", 8) == 0) {
+            smdh = ncsd_decrypt_exefs_file(&ncsd, &exefs_header.file_header[i]);
+            smdh_size = exefs_header.file_header[i].size;
+            break;
+        }
+    }
+    if (smdh == NULL) {
+        ncsd_close(&ncsd);
+        fprintf(stderr, "Error: icon/SMDH not found in the ExeFS.\n");
+        return;
+    }
+
+    ncsd_close(&ncsd);
+}
+
+void convert_3ds_old(const char *rom_file, const char *cia_file, options *opt) {
     const uint128 orig_ncch_key = {0x1F76A94DE934C053ULL, 0xB98E95CECA3E4D17ULL};
     const size_t mu = 0x200;  // media unit
     const size_t read_size = 0x800000;  // used from padxorer
@@ -185,7 +247,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         if (zerokey_encrypted)
             memcpy(key, zerokey, 16);
         else {
-            uint128 key_y, key_, tmp;
+            uint128 key_y, key_, n = {0x024591DC5D52768A, 0x1FF9E9AAC5FE0408};
             char keystr[33];
             fseek(rom, (long)game_cxi_offset, SEEK_SET);
             fread(&key_y, 16, 1, rom);
@@ -193,9 +255,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
             key_ = orig_ncch_key;
             uint128_rol(&key_, 2);
             uint128_xor(&key_, &key_y);
-            tmp.lowpart = 0x024591DC5D52768A;
-            tmp.highpart = 0x1FF9E9AAC5FE0408;
-            uint128_add(&key_, &tmp);
+            uint128_add(&key_, &n);
             uint128_rol(&key_, 87);
             // key_ = ROL128((ROL128(orig_ncch_key, 2) ^ key_y) + ((unsigned __int128)0x1FF9E9AAC5FE0408 << 64) + (unsigned __int128)0x024591DC5D52768A, 87);
             int128_to_key(&key_, key);
@@ -220,6 +280,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         mbedtls_aes_setkey_enc(&cont, key, 128);
         memcpy(counter, ctr_extheader_v, 16);
         mbedtls_aes_crypt_ctr(&cont, 0x800, &nc_off, counter, stream_block, extheader, extheader);
+        mbedtls_aes_free(&cont);
     }
     mbedtls_sha256(extheader, 0x400, sha256sum, 0);
     fseek(rom, 0x4160, SEEK_SET);
@@ -398,7 +459,8 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     write8(cia, content_index);
     writepad(cia, 0x201F);
     fwrite(certchain_retail, 1, sizeof(certchain_retail), cia);
-    fwrite(ticket_tmd, 1, sizeof(ticket_tmd), cia);
+    fwrite(ticket_data, 1, sizeof(ticket_data), cia);
+    fwrite(tmd_data, 1, sizeof(tmd_data), cia);
     writepad(cia, 0x96C);
     fwrite(chunk_records, 1, (uint8_t*)crec - chunk_records, cia);
     writepad(cia, tmd_padding);
