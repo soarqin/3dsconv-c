@@ -113,7 +113,15 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
             fprintf(stderr, "Converting anyway because --ignore-bad-hashes was passed.\n");
             break;
     }
-    if (opt->verbose) fprintf(stderr, "\nTitle ID: %016" PRIX64 "\n", ncsd.header.media_id);
+    if (opt->verbose) {
+        fprintf(stderr, "\nTitle ID: %016" PRIX64 "\n", ncsd.header.media_id);
+        fprintf(stderr, "\nGame Executable CXI Size: %" PRIX64 "\n"
+            "Manual CFA Size: %" PRIX64 "\n"
+            "Download Play child CFA Size: %" PRIX64 "\n",
+            (uint64_t)ncsd.header.partition_geometry[0].size * MEDIA_UNIT_SIZE,
+            (uint64_t)ncsd.header.partition_geometry[1].size * MEDIA_UNIT_SIZE,
+            (uint64_t)ncsd.header.partition_geometry[2].size * MEDIA_UNIT_SIZE);
+    }
     if (ncsd.encrypted == 1 && opt->verbose) {
         char keystr[33];
         hexlify(ncsd.calc_key, 16, keystr, 1);
@@ -127,9 +135,9 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
         ncch_exheader_spoof_version(&ncsd.exheader, 0x220, origver);
         if (opt->verbose) {
             if (origver[0] != 0)
-                fprintf(stderr, "Spoofed kernel version(original: %04X) in 1st-half ExtHeader...\n", origver[0]);
+                fprintf(stderr, "Spoofed kernel version (from %04X) in 1st-half ExtHeader...\n", origver[0]);
             if (origver[1] != 0)
-                fprintf(stderr, "Spoofed kernel version(original: %04X) in 2nd-half ExtHeader...\n", origver[1]);
+                fprintf(stderr, "Spoofed kernel version (from %04X) in 2nd-half ExtHeader...\n", origver[1]);
         }
     }
 

@@ -13,15 +13,18 @@ set(SOURCE_FILES
         mbedtls/sha256.h
         3ds/3dsconv.c
         3ds/3dsconv.h
+        3ds/bn.c
+        3ds/bn.h
         3ds/cia.c
         3ds/cia.h
         3ds/ncch.c
         3ds/ncch.h
+        3ds/ncsd.c
+        3ds/ncsd.h
         3ds/ticket.c
         3ds/ticket.h
         3ds/tmd.c
         3ds/tmd.h
-        3ds/uint128.h
         main.c)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)

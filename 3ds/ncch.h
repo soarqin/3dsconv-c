@@ -211,10 +211,10 @@ __attribute__((packed))
 #endif
 ExHeader;
 
+#pragma pack(pop)
+
 void ncch_exheader_spoof_version(ExHeader *exheader, uint16_t targetver, uint16_t origver[2]);
 void ncch_exheader_get_hash(ExHeader *exheader, uint8_t hash[0x20]);
 void ncch_fix_exheader_hash(NCCHHeader *ncch, ExHeader *exheader);
-
-#pragma pack(pop)
 
 #endif // __NCCH_H_

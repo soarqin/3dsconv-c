@@ -74,9 +74,8 @@ __attribute__((packed))
 #endif
 TMDSig2048;
 
-typedef struct
-{
-    uint32_t signaturetype;
+typedef struct {
+    uint32_t signature_type;
     uint8_t signature[512];
     uint8_t padding[60];
 }

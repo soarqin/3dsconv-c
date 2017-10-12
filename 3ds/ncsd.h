@@ -5,6 +5,10 @@
 
 #include <stdint.h>
 
+enum {
+    MEDIA_UNIT_SIZE = 0x200,
+};
+
 typedef enum {
     NCSD_OK = 0,
     NCSD_FILE_NOT_FOUND = -1,
@@ -76,11 +80,11 @@ typedef struct {
     ExHeader exheader;
 } NCSDContext;
 
+#pragma pack(pop)
+
 int ncsd_open(NCSDContext *context, const char *filename);
 void ncsd_close(NCSDContext *context);
 void ncsd_read_exefs_header(NCSDContext *context, ExeFSHeader *header);
 uint8_t *ncsd_decrypt_exefs_file(NCSDContext *context, ExeFSFileHeader *file_header);
-
-#pragma pack(pop)
 
 #endif // __NCSD_H_

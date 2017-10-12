@@ -17,10 +17,6 @@
 #define fseeko64 _fseeki64
 #endif
 
-enum {
-    MEDIA_UNIT = 0x200,
-};
-
 const uint128 slot_0x2C_key = {0x1F76A94DE934C053ULL, 0xB98E95CECA3E4D17ULL};
 
 static void int128_to_key(uint128 *n, uint8_t *key) {
@@ -79,8 +75,8 @@ static int verify_exheader_hash(NCSDContext *context) {
 
 static int read_ncch(NCSDContext *context) {
     FILE *fd = (FILE *)context->fd;
-    uint64_t offset = (uint64_t)context->header.partition_geometry[0].offset * MEDIA_UNIT;
-    uint64_t size = (uint64_t)context->header.partition_geometry[0].offset * MEDIA_UNIT;
+    uint64_t offset = (uint64_t)context->header.partition_geometry[0].offset * MEDIA_UNIT_SIZE;
+    uint64_t size = (uint64_t)context->header.partition_geometry[0].offset * MEDIA_UNIT_SIZE;
     fseeko64(fd, offset, SEEK_SET);
     fread(&context->ncch, sizeof(NCCHHeader), 1, fd);
     if (memcmp(context->ncch.magic, "NCCH", 4) != 0)
@@ -114,7 +110,7 @@ void ncsd_close(NCSDContext *context) {
 }
 
 void ncsd_read_exefs_header(NCSDContext *context, ExeFSHeader *header) {
-    uint64_t offset = (uint64_t)(context->header.partition_geometry[0].offset + context->ncch.exefs_offset) * MEDIA_UNIT;
+    uint64_t offset = (uint64_t)(context->header.partition_geometry[0].offset + context->ncch.exefs_offset) * MEDIA_UNIT_SIZE;
     FILE *fd = (FILE*)context->fd;
     fseeko64(fd, offset, SEEK_SET);
     fread(header, sizeof(ExeFSHeader), 1, fd);
@@ -132,7 +128,7 @@ void ncsd_read_exefs_header(NCSDContext *context, ExeFSHeader *header) {
 }
 
 uint8_t *ncsd_decrypt_exefs_file(NCSDContext *context, ExeFSFileHeader *file_header) {
-    uint64_t offset = (uint64_t)(context->header.partition_geometry[0].offset + context->ncch.exefs_offset) * MEDIA_UNIT + sizeof(ExeFSHeader) + file_header->offset;
+    uint64_t offset = (uint64_t)(context->header.partition_geometry[0].offset + context->ncch.exefs_offset) * MEDIA_UNIT_SIZE + sizeof(ExeFSHeader) + file_header->offset;
     uint8_t *data = (uint8_t *)malloc(file_header->size);
     FILE *fd = (FILE*)context->fd;
     fseeko64(fd, offset, SEEK_SET);
