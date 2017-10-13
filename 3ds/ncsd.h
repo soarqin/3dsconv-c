@@ -82,9 +82,13 @@ typedef struct {
 
 #pragma pack(pop)
 
+void ncsd_crypt_exheader(NCSDContext *context, ExHeader *exheader);
+
 int ncsd_open(NCSDContext *context, const char *filename);
 void ncsd_close(NCSDContext *context);
 void ncsd_read_exefs_header(NCSDContext *context, ExeFSHeader *header);
 uint8_t *ncsd_decrypt_exefs_file(NCSDContext *context, ExeFSFileHeader *file_header);
+uint64_t ncsd_read_part_start(NCSDContext *context, uint32_t part, size_t offset);
+size_t ncsd_read_part(NCSDContext *context, void *data, size_t size);
 
 #endif // __NCSD_H_

@@ -15,6 +15,7 @@
 
 #ifdef _MSC_VER
 #define fseeko64 _fseeki64
+#define ftello64 _ftelli64
 #endif
 
 const uint128 slot_0x2C_key = {0x1F76A94DE934C053ULL, 0xB98E95CECA3E4D17ULL};
@@ -50,7 +51,7 @@ static setup_key(NCSDContext *context) {
         context->encrypted = 0;
 }
 
-static void crypt_exheader(NCSDContext *context) {
+void ncsd_crypt_exheader(NCSDContext *context, ExHeader *exheader) {
     if (context->encrypted) {
         mbedtls_aes_context cont;
         size_t nc_off = 0;
@@ -60,7 +61,7 @@ static void crypt_exheader(NCSDContext *context) {
         mbedtls_aes_setkey_enc(&cont, context->calc_key, 128);
         *(uint64_t*)counter = BE64(context->header.media_id);
         counter[8] = 1;
-        mbedtls_aes_crypt_ctr(&cont, 0x800, &nc_off, counter, stream_block, (const uint8_t*)&context->exheader, (uint8_t*)&context->exheader);
+        mbedtls_aes_crypt_ctr(&cont, 0x800, &nc_off, counter, stream_block, (const uint8_t*)exheader, (uint8_t*)exheader);
         mbedtls_aes_free(&cont);
     }
 }
@@ -83,7 +84,7 @@ static int read_ncch(NCSDContext *context) {
         return NCSD_INVALID_NCCH_HEADER;
     fread(&context->exheader, sizeof(ExHeader), 1, fd);
     setup_key(context);
-    crypt_exheader(context);
+    ncsd_crypt_exheader(context, &context->exheader);
     return verify_exheader_hash(context);
 }
 
@@ -143,7 +144,18 @@ uint8_t *ncsd_decrypt_exefs_file(NCSDContext *context, ExeFSFileHeader *file_hea
         *(uint64_t*)counter = BE64(context->header.media_id);
         counter[8] = 2;
         *(uint64_t*)(counter + 8) = BE64(BE64(*(uint64_t*)(counter + 8)) + sizeof(ExeFSHeader) / 0x10 + file_header->offset / 0x10);
-        mbedtls_aes_crypt_ctr(&cont, sizeof(ExeFSHeader), &nc_off, counter, stream_block, data, data);
+        mbedtls_aes_crypt_ctr(&cont, file_header->size, &nc_off, counter, stream_block, data, data);
     }
     return data;
+}
+
+uint64_t ncsd_read_part_start(NCSDContext *context, uint32_t part, size_t offset) {
+    uint64_t part_size = (uint64_t)context->header.partition_geometry[part].size * MEDIA_UNIT_SIZE;
+    if ((uint64_t)offset > part_size) offset = (size_t)part_size;
+    fseeko64((FILE*)context->fd, (uint64_t)context->header.partition_geometry[part].offset * MEDIA_UNIT_SIZE + offset, SEEK_SET);
+    return part_size - (uint64_t)offset;
+}
+
+size_t ncsd_read_part(NCSDContext *context, void *data, size_t size) {
+    return fread(data, 1, size, (FILE*)context->fd);
 }

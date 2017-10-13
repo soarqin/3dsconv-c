@@ -21,9 +21,7 @@ set(SOURCE_FILES
         3ds/ncch.h
         3ds/ncsd.c
         3ds/ncsd.h
-        3ds/ticket.c
         3ds/ticket.h
-        3ds/tmd.c
         3ds/tmd.h
         main.c)
 

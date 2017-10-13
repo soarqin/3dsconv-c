@@ -16,8 +16,8 @@ typedef enum {
 
 typedef struct {
     uint16_t index;
-    uint16_t commandcount;
-    uint8_t unk[32];
+    uint16_t command_count;
+    uint8_t hash[32];
 }
 #ifdef __GNUC__
 __attribute__((packed))
