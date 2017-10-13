@@ -28,7 +28,7 @@ static void int128_to_key(uint128 *n, uint8_t *key) {
         *key++ = (uint8_t)(n->lowpart >> i);
 }
 
-static setup_key(NCSDContext *context) {
+static void setup_key(NCSDContext *context) {
     uint8_t bitflag = context->ncch.flags[7];
     if ((bitflag & 4) == 0) {
         if (bitflag & 1) {

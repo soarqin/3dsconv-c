@@ -1,4 +1,8 @@
-#define PROGRAM_VERSION "1.1"
+#ifdef _MSC_VER
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
+#define PROGRAM_VERSION "2.0"
 
 #include "3ds/3dsconv.h"
 
@@ -20,6 +24,24 @@
 #define is_slash(d) ((d) == '/')
 #define slash_char '/'
 #endif
+
+static void makedirs(const char *dir) {
+    char tmp[512];
+    char *p = NULL;
+    size_t len;
+
+    snprintf(tmp, sizeof(tmp), "%s", dir);
+    len = strlen(tmp);
+    if (is_slash(tmp[len - 1]))
+        tmp[len - 1] = 0;
+    for (p = tmp + 1; *p; p++)
+        if (is_slash(*p)) {
+            *p = 0;
+            mkdir(tmp, S_IRWXU);
+            *p = slash_char;
+        }
+    mkdir(tmp, S_IRWXU);
+}
 
 void showhelp() {
     fprintf(stderr, "\
@@ -44,24 +66,6 @@ struct arg_struct {
     void *var;
 };
 
-static void makedirs(const char *dir) {
-    char tmp[512];
-    char *p = NULL;
-    size_t len;
-
-    snprintf(tmp, sizeof(tmp), "%s", dir);
-    len = strlen(tmp);
-    if(is_slash(tmp[len - 1]))
-        tmp[len - 1] = 0;
-    for(p = tmp + 1; *p; p++)
-        if(is_slash(*p)) {
-            *p = 0;
-            mkdir(tmp, S_IRWXU);
-            *p = slash_char;
-        }
-    mkdir(tmp, S_IRWXU);
-}
-
 int main(int argc, char *argv[]) {
     int i;
     options opt;
@@ -75,7 +79,7 @@ int main(int argc, char *argv[]) {
         {0, "--overwrite", &overwrite},
         {0, "--ignore-bad-hashes", &opt.ignore_bad_hashes},
         {0, "--no-fw-spoof", &opt.no_firmware_spoof},
-        {1, "--output", output_directory},
+        {512, "--output", output_directory},
         {0, NULL}
     };
 
@@ -101,12 +105,17 @@ int main(int argc, char *argv[]) {
             for (s = args_to_check; s->name != NULL; ++s) {
                 if (strcmp(arg, s->name) == 0) {
                     switch (s->type) {
-                        case 0:
-                            *(int*)s->var = value == NULL ? 1 : atoi(value);
-                            break;
-                        case 1:
-                            strcpy((char*)s->var, value);
-                            break;
+                    case 0:
+                        *(int*)s->var = value == NULL ? 1 : atoi(value);
+                        break;
+                    default:
+                        if (s->type < 0) break;
+                        if (strlen(value) >= s->type) {
+                            fprintf(stderr, "Error: \"%s\" length too long!\n", s->name);
+                            return 1;
+                        }
+                        strcpy((char*)s->var, value);
+                        break;
                     }
                 }
             }
