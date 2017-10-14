@@ -236,7 +236,6 @@ void ncch_setup_key(NCCHContext *context);
 void ncch_exheader_spoof_version(ExHeader *exheader, uint16_t targetver, uint16_t origver[2]);
 void ncch_exheader_get_hash(ExHeader *exheader, uint8_t hash[0x20]);
 void ncch_fix_exheader_hash(NCCHContext *context);
-void ncch_get_counter(NCCHHeader *ncch, uint8_t counter[16], uint8_t type, size_t offset);
-void ncch_crypt_part(NCCHContext *ncch, uint8_t type, size_t offset, void *data, size_t size);
+void ncch_crypt_part(NCCHContext *ncch, uint8_t type, uint64_t offset, void *data, size_t size);
 
 #endif // __NCCH_H_

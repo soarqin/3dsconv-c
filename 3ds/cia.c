@@ -128,7 +128,7 @@ int cia_write_from_ncsd(CIAContext *context, NCSDContext *ncsd, void (*on_progre
     mbedtls_sha256_context ctx;
     FILE *fd = (FILE*)context->fd;
     uint64_t tmd_body_save_off, ncch_save_off;
-    uint64_t left, total_size;
+    uint64_t total_size, write_offset;
     uint8_t* dataread;
     if (fd == NULL || !context->writable) return -1;
     write_struct_with_padding(fd, &context->header, sizeof(CIAHeader));
@@ -147,32 +147,35 @@ int cia_write_from_ncsd(CIAContext *context, NCSDContext *ncsd, void (*on_progre
     mbedtls_sha256_starts(&ctx, 0);
     mbedtls_sha256_update(&ctx, (const uint8_t*)&context->ncch.header, sizeof(NCCHHeader));
     mbedtls_sha256_update(&ctx, (const uint8_t*)&context->ncch.exheader, sizeof(ExHeader));
-    total_size = left = ncsd_read_part_start(ncsd, 0, sizeof(NCCHHeader) + sizeof(ExHeader));
-    on_progress(0, 0, total_size);
-    while (left > 0) {
-        size_t to_read = (size_t)(read_size < left ? read_size : left);
+    total_size = ncsd_read_part_start(ncsd, 0, sizeof(NCCHHeader) + sizeof(ExHeader));
+    write_offset = 0;
+    on_progress(0, write_offset, total_size);
+    while (write_offset < total_size) {
+        size_t to_read = (size_t)(write_offset + read_size > total_size ? total_size - write_offset : read_size);
         size_t readbytes = ncsd_read_part(ncsd, dataread, to_read);
         mbedtls_sha256_update(&ctx, dataread, readbytes);
         fwrite(dataread, 1, readbytes, fd);
-        left -= readbytes;
-        on_progress(0, total_size - left, total_size);
+        write_offset += readbytes;
+        on_progress(0, write_offset, total_size);
     }
     mbedtls_sha256_finish(&ctx, context->tmd_chunks[0].hash);
     mbedtls_sha256_free(&ctx);
 
     // Manual CFA
     if (ncsd->header.partition_geometry[1].size != 0) {
+        // fseeko64(fd, ncch_save_off + (ncsd->header.partition_geometry[1].offset - ncsd->header.partition_geometry[0].offset) * MEDIA_UNIT_SIZE, SEEK_SET);
         mbedtls_sha256_init(&ctx);
         mbedtls_sha256_starts(&ctx, 0);
-        total_size = left = ncsd_read_part_start(ncsd, 1, 0);
-        on_progress(1, 0, total_size);
-        while (left > 0) {
-            size_t to_read = (size_t)(read_size < left ? read_size : left);
+        total_size = ncsd_read_part_start(ncsd, 1, 0);
+        write_offset = 0;
+        on_progress(1, write_offset, total_size);
+        while (write_offset < total_size) {
+            size_t to_read = (size_t)(write_offset + read_size > total_size ? total_size - write_offset : read_size);
             size_t readbytes = ncsd_read_part(ncsd, dataread, to_read);
             mbedtls_sha256_update(&ctx, dataread, readbytes);
             fwrite(dataread, 1, readbytes, fd);
-            left -= readbytes;
-            on_progress(1, total_size - left, total_size);
+            write_offset += readbytes;
+            on_progress(1, write_offset, total_size);
         }
         mbedtls_sha256_finish(&ctx, context->tmd_chunks[1].hash);
         mbedtls_sha256_free(&ctx);
@@ -180,17 +183,19 @@ int cia_write_from_ncsd(CIAContext *context, NCSDContext *ncsd, void (*on_progre
 
     // Download Play child container CFA
     if (ncsd->header.partition_geometry[2].size != 0) {
+        // fseeko64(fd, ncch_save_off + (ncsd->header.partition_geometry[2].offset - ncsd->header.partition_geometry[0].offset) * MEDIA_UNIT_SIZE, SEEK_SET);
         mbedtls_sha256_init(&ctx);
         mbedtls_sha256_starts(&ctx, 0);
-        total_size = left = ncsd_read_part_start(ncsd, 2, 0);
-        on_progress(2, 0, total_size);
-        while (left > 0) {
-            size_t to_read = (size_t)(read_size < left ? read_size : left);
+        total_size = ncsd_read_part_start(ncsd, 2, 0);
+        write_offset = 0;
+        on_progress(2, write_offset, total_size);
+        while (write_offset < total_size) {
+            size_t to_read = (size_t)(write_offset + read_size > total_size ? total_size - write_offset : read_size);
             size_t readbytes = ncsd_read_part(ncsd, dataread, to_read);
             mbedtls_sha256_update(&ctx, dataread, readbytes);
             fwrite(dataread, 1, readbytes, fd);
-            left -= readbytes;
-            on_progress(2, total_size - left, total_size);
+            write_offset += readbytes;
+            on_progress(2, write_offset, total_size);
         }
         mbedtls_sha256_finish(&ctx, context->tmd_chunks[2].hash);
         mbedtls_sha256_free(&ctx);

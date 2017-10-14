@@ -68,7 +68,7 @@ void ncch_fix_exheader_hash(NCCHContext *context) {
     memcpy(context->header.extended_header_hash, hash, 0x20);
 }
 
-void ncch_get_counter(NCCHHeader *ncch, uint8_t counter[16], uint8_t type, size_t offset) {
+static void get_counter(NCCHHeader *ncch, uint8_t counter[16], uint8_t type, uint64_t offset) {
     memset(counter, 0, 16);
     if (ncch->version == 2 || ncch->version == 0) {
         *(uint64_t*)counter = BE64(ncch->partition_id);
@@ -99,13 +99,13 @@ void ncch_get_counter(NCCHHeader *ncch, uint8_t counter[16], uint8_t type, size_
         *(uint64_t*)(counter + 8) = BE64(BE64(*(uint64_t*)(counter + 8)) + offset / 0x10);
 }
 
-void ncch_crypt_part(NCCHContext *ncch, uint8_t type, size_t offset, void *data, size_t size) {
+void ncch_crypt_part(NCCHContext *ncch, uint8_t type, uint64_t offset, void *data, size_t size) {
     if (!ncch->encrypted) return;
     uint8_t counter[16];
     mbedtls_aes_context cont;
     size_t nc_off = 0;
     uint8_t stream_block[16];
-    ncch_get_counter(&ncch->header, counter, type, offset);
+    get_counter(&ncch->header, counter, type, offset);
     mbedtls_aes_init(&cont);
     mbedtls_aes_setkey_enc(&cont, ncch->key_y, 128);
     mbedtls_aes_crypt_ctr(&cont, size, &nc_off, counter, stream_block, (const uint8_t*)data, (uint8_t*)data);

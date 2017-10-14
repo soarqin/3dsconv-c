@@ -1,9 +1,6 @@
 #ifndef __BN_H_
 #define __BN_H_
 
-#include <stdint.h>
-#include <stdlib.h>
-
 #ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS
 #define _CRT_NONSTDC_NO_WARNINGS
@@ -15,6 +12,9 @@
 #define BE32(n) (uint32_t)__builtin_bswap32((unsigned long)n)
 #define BE64(n) __builtin_bswap64(n)
 #define BE16(n) __builtin_bswap16(n)
+
+#include <stdint.h>
+#include <stdlib.h>
 
 typedef struct uint128 {
     uint64_t lowpart, highpart;

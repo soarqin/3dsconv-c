@@ -152,7 +152,6 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
 
     fprintf(stdout, "Done converting %s to %s.\n", rom_file, cia_file);
 
-    printf("contentsize: %u\nexefs: %u %u\nlogo: %u %u\nplain: %u %u\nromfs: %u %u\n", ncsd.ncch.header.content_size, ncsd.ncch.header.exefs_offset, ncsd.ncch.header.exefs_size, ncsd.ncch.header.logo_offset, ncsd.ncch.header.logo_size, ncsd.ncch.header.plain_region_offset, ncsd.ncch.header.plain_region_size, ncsd.ncch.header.romfs_offset, ncsd.ncch.header.romfs_size);
     cia_close(&cia);
     ncsd_close(&ncsd);
 }
