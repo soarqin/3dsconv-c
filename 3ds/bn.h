@@ -2,6 +2,7 @@
 #define __BN_H_
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS

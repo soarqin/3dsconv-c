@@ -51,11 +51,12 @@ typedef struct {
     TMDBody tmd_body;
     TMDContentChunk tmd_chunks[3];
     size_t chunk_count;
-    NCCHHeader ncch;
-    ExHeader exheader;
+    NCCHContext ncch;
     CIAMeta meta;
     uint8_t *smdh_icon;
     size_t smdh_icon_size;
+    int encrypted;
+    uint8_t calc_key[16];
     void *fd;
     int writable;
 }

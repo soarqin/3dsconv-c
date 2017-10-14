@@ -67,7 +67,6 @@ void cia_copy_ncch_from_ncsd(CIAContext *context, NCSDContext *ncsd) {
     uint64_t manual_cfa_size = (uint64_t)ncsd->header.partition_geometry[1].size * MEDIA_UNIT_SIZE;
     uint64_t dlpchild_cfa_size = (uint64_t)ncsd->header.partition_geometry[2].size * MEDIA_UNIT_SIZE;
     context->ncch = ncsd->ncch;
-    context->exheader = ncsd->exheader;
     context->chunk_count = 0;
     context->header.header_size = sizeof(CIAHeader);
     context->header.type = 0;
@@ -91,10 +90,10 @@ void cia_copy_ncch_from_ncsd(CIAContext *context, NCSDContext *ncsd) {
     context->tmd_body.content_count = BE16((uint16_t)context->chunk_count);
     context->tmd_body.content_info[0].command_count = BE16((uint16_t)context->chunk_count);
     context->tmd_body.title_id = BE64(ncsd->header.media_id);
-    context->tmd_body.savedata_size = (uint32_t)ncsd->exheader.system_info.savedata_size;
-    context->meta.dep_list = ncsd->exheader.dep_list;
-    context->meta.core_version = ncsd->exheader.arm11_system_local_caps.core_version;
-    ncsd_crypt_exheader(ncsd, &context->exheader);
+    context->tmd_body.savedata_size = (uint32_t)ncsd->ncch.exheader.system_info.savedata_size;
+    context->meta.dep_list = ncsd->ncch.exheader.dep_list;
+    context->meta.core_version = ncsd->ncch.exheader.arm11_system_local_caps.core_version;
+    ncch_crypt_part(&context->ncch, NCCHTYPE_EXHEADER, 0, &context->ncch.exheader, sizeof(ExHeader));
 }
 
 void cia_set_smdh(CIAContext *context, const uint8_t *data, size_t size) {
@@ -128,7 +127,7 @@ int cia_write_from_ncsd(CIAContext *context, NCSDContext *ncsd, void (*on_progre
     const uint64_t read_size = 0x800000;
     mbedtls_sha256_context ctx;
     FILE *fd = (FILE*)context->fd;
-    uint64_t save_off;
+    uint64_t tmd_body_save_off, ncch_save_off;
     uint64_t left, total_size;
     uint8_t* dataread;
     if (fd == NULL || !context->writable) return -1;
@@ -136,17 +135,18 @@ int cia_write_from_ncsd(CIAContext *context, NCSDContext *ncsd, void (*on_progre
     write_struct_with_padding(fd, context->cert_chain, context->cert_chain_size);
     write_struct_with_padding(fd, &context->ticket, sizeof(ETicket));
     write_struct_with_padding(fd, &context->tmd_sig4096, context->tmd_sig_size);
-    save_off = ftello64(fd);
+    tmd_body_save_off = ftello64(fd);
     write_struct_with_padding(fd, &context->tmd_body, sizeof(TMDBody) + sizeof(TMDContentChunk) * context->chunk_count);
 
-    dataread = (uint8_t*)malloc(read_size);
+    ncch_save_off = ftello64(fd);
 
-    fwrite(&context->ncch, sizeof(NCCHHeader), 1, fd);
-    fwrite(&context->exheader, sizeof(ExHeader), 1, fd);
+    dataread = (uint8_t*)malloc(read_size);
+    fwrite(&context->ncch.header, sizeof(NCCHHeader), 1, fd);
+    fwrite(&context->ncch.exheader, sizeof(ExHeader), 1, fd);
     mbedtls_sha256_init(&ctx);
     mbedtls_sha256_starts(&ctx, 0);
-    mbedtls_sha256_update(&ctx, (const uint8_t*)&context->ncch, sizeof(NCCHHeader));
-    mbedtls_sha256_update(&ctx, (const uint8_t*)&context->exheader, sizeof(ExHeader));
+    mbedtls_sha256_update(&ctx, (const uint8_t*)&context->ncch.header, sizeof(NCCHHeader));
+    mbedtls_sha256_update(&ctx, (const uint8_t*)&context->ncch.exheader, sizeof(ExHeader));
     total_size = left = ncsd_read_part_start(ncsd, 0, sizeof(NCCHHeader) + sizeof(ExHeader));
     on_progress(0, 0, total_size);
     while (left > 0) {
@@ -203,7 +203,7 @@ int cia_write_from_ncsd(CIAContext *context, NCSDContext *ncsd, void (*on_progre
     // update final hashes
     mbedtls_sha256((const uint8_t*)&context->tmd_chunks[0], sizeof(TMDContentChunk) * context->chunk_count, context->tmd_body.content_info[0].hash, 0);
     mbedtls_sha256((const uint8_t*)&context->tmd_body.content_info[0], sizeof(TMDContentInfo) * 64, context->tmd_body.hash, 0);
-    fseeko64(fd, save_off, SEEK_SET);
+    fseeko64(fd, tmd_body_save_off, SEEK_SET);
     write_struct_with_padding(fd, &context->tmd_body, sizeof(TMDBody) + sizeof(TMDContentChunk) * context->chunk_count);
     return 0;
 }

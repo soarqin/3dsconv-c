@@ -3,13 +3,25 @@
 
 #include <stdint.h>
 
+enum {
+    MEDIA_UNIT_SIZE = 0x200,
+};
+
+typedef enum {
+    NCCHTYPE_EXHEADER = 1,
+    NCCHTYPE_EXEFS = 2,
+    NCCHTYPE_ROMFS = 3,
+    NCCHTYPE_LOGO = 4,
+    NCCHTYPE_PLAINRGN = 5,
+} NCCHTypes;
+
 #pragma pack(push, 1)
 
 typedef struct {
     uint8_t signature[0x100];
     uint8_t magic[4];
     uint32_t content_size;
-    uint64_t title_id;
+    uint64_t partition_id;
     uint16_t maker_code;
     uint16_t version;
     uint32_t seed_check;
@@ -213,8 +225,18 @@ ExHeader;
 
 #pragma pack(pop)
 
+typedef struct {
+    NCCHHeader header;
+    ExHeader exheader;
+    int encrypted;
+    uint8_t key_y[16];
+} NCCHContext;
+
+void ncch_setup_key(NCCHContext *context);
 void ncch_exheader_spoof_version(ExHeader *exheader, uint16_t targetver, uint16_t origver[2]);
 void ncch_exheader_get_hash(ExHeader *exheader, uint8_t hash[0x20]);
-void ncch_fix_exheader_hash(NCCHHeader *ncch, ExHeader *exheader);
+void ncch_fix_exheader_hash(NCCHContext *context);
+void ncch_get_counter(NCCHHeader *ncch, uint8_t counter[16], uint8_t type, size_t offset);
+void ncch_crypt_part(NCCHContext *ncch, uint8_t type, size_t offset, void *data, size_t size);
 
 #endif // __NCCH_H_

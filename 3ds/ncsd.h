@@ -5,10 +5,6 @@
 
 #include <stdint.h>
 
-enum {
-    MEDIA_UNIT_SIZE = 0x200,
-};
-
 typedef enum {
     NCSD_OK = 0,
     NCSD_FILE_NOT_FOUND = -1,
@@ -74,15 +70,10 @@ ExeFSHeader;
 typedef struct {
     void *fd;
     NCSDHeader header;
-    int encrypted;
-    uint8_t calc_key[16];
-    NCCHHeader ncch;
-    ExHeader exheader;
+    NCCHContext ncch;
 } NCSDContext;
 
 #pragma pack(pop)
-
-void ncsd_crypt_exheader(NCSDContext *context, ExHeader *exheader);
 
 int ncsd_open(NCSDContext *context, const char *filename);
 void ncsd_close(NCSDContext *context);

@@ -65,7 +65,7 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
             fprintf(stderr, "Error: \"%s\" is not a CCI file (missing NCCH magic).\n", rom_file);
             return;
         case NCSD_WRONG_EXHEADER_HASH:
-            fprintf(stderr, "Error: This file may be corrupt (invalid ExtHeader hash).\n");
+            fprintf(stderr, "Error: This file may be corrupt (invalid ExHeader hash).\n");
             if (!opt->ignore_bad_hashes)
                 return;
             fprintf(stderr, "Converting anyway because --ignore-bad-hashes was passed.\n");
@@ -80,29 +80,29 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
             (uint64_t)ncsd.header.partition_geometry[1].size * MEDIA_UNIT_SIZE,
             (uint64_t)ncsd.header.partition_geometry[2].size * MEDIA_UNIT_SIZE);
     }
-    if (ncsd.encrypted == 1 && opt->verbose) {
+    if (ncsd.ncch.encrypted == 1 && opt->verbose) {
         fprintf(stderr, "Normal key:");
-        fprint_hex(stderr, ncsd.calc_key, 16, 1);
+        fprint_hex(stderr, ncsd.ncch.key_y, 16, 1);
         fprintf(stderr, "\n");
     }
-    fprintf(stdout, "Converting \"%s\" (%s)...\n", rom_file, ncsd.encrypted == 2 ? "zerokey encrypted" : (ncsd.encrypted == 1 ? "encrypted" : "decrypted"));
+    fprintf(stdout, "Converting \"%s\" (%s)...\n", rom_file, ncsd.ncch.encrypted == 2 ? "zerokey encrypted" : (ncsd.ncch.encrypted == 1 ? "encrypted" : "decrypted"));
 
     // Spoof firmware version
     if (!opt->no_firmware_spoof) {
         uint16_t origver[2];
-        ncch_exheader_spoof_version(&ncsd.exheader, 0x220, origver);
+        ncch_exheader_spoof_version(&ncsd.ncch.exheader, 0x220, origver);
         if (opt->verbose) {
             if (origver[0] != 0)
-                fprintf(stderr, "Spoofed kernel version (from %04X) in 1st-half ExtHeader...\n", origver[0]);
+                fprintf(stderr, "Spoofed kernel version (from %04X) in 1st-half ExHeader...\n", origver[0]);
             if (origver[1] != 0)
-                fprintf(stderr, "Spoofed kernel version (from %04X) in 2nd-half ExtHeader...\n", origver[1]);
+                fprintf(stderr, "Spoofed kernel version (from %04X) in 2nd-half ExHeader...\n", origver[1]);
         }
     }
 
     // Make a SD Application
     if (opt->verbose) fprintf(stderr, "Patching Extended Header...\n");
-    ncsd.exheader.codeset_info.flags.flag |= 0x02;
-    ncch_fix_exheader_hash(&ncsd.ncch, &ncsd.exheader);
+    ncsd.ncch.exheader.codeset_info.flags.flag |= 0x02;
+    ncch_fix_exheader_hash(&ncsd.ncch);
 
     ncsd_read_exefs_header(&ncsd, &exefs_header);
     for (i = 0; i < 10; ++i) {
@@ -151,6 +151,8 @@ void convert_3ds(const char *rom_file, const char *cia_file, options *opt) {
     }
 
     fprintf(stdout, "Done converting %s to %s.\n", rom_file, cia_file);
+
+    printf("contentsize: %u\nexefs: %u %u\nlogo: %u %u\nplain: %u %u\nromfs: %u %u\n", ncsd.ncch.header.content_size, ncsd.ncch.header.exefs_offset, ncsd.ncch.header.exefs_size, ncsd.ncch.header.logo_offset, ncsd.ncch.header.logo_size, ncsd.ncch.header.plain_region_offset, ncsd.ncch.header.plain_region_size, ncsd.ncch.header.romfs_offset, ncsd.ncch.header.romfs_size);
     cia_close(&cia);
     ncsd_close(&ncsd);
 }
