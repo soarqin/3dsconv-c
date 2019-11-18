@@ -7,6 +7,7 @@
 #include "ncsd.h"
 
 #include <stdint.h>
+#include <stddef.h>
 
 #pragma pack(push, 1)
 

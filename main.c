@@ -21,6 +21,7 @@
 #define is_slash(d) (((d) == '/') || ((d) == '\\'))
 #define slash_char '\\'
 #else
+#include <sys/stat.h>
 #define is_slash(d) ((d) == '/')
 #define slash_char '/'
 #endif

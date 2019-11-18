@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.2)
 
+set(CMAKE_C_STANDARD 99)
+
 project(3dsconv_c)
 
 set(SOURCE_FILES
@@ -38,4 +40,4 @@ endforeach()
 
 add_executable(3dsconv ${SOURCE_FILES})
 target_include_directories(3dsconv PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(3dsconv PRIVATE "-DMBEDTLS_HAVE_ASM")
+target_compile_definitions(3dsconv PRIVATE _FILE_OFFSET_BITS=64 MBEDTLS_HAVE_ASM)

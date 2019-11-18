@@ -4,6 +4,7 @@
 #include "ncch.h"
 
 #include <stdint.h>
+#include <stddef.h>
 
 enum {
     MEDIA_UNIT_SIZE = 0x200,

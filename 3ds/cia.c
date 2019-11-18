@@ -12,8 +12,8 @@
 #include <stdlib.h>
 
 #ifdef _MSC_VER
-#define fseeko64 _fseeki64
-#define ftello64 _ftelli64
+#define fseeko _fseeki64
+#define ftello _ftelli64
 #endif
 
 void cia_new(CIAContext *context) {
@@ -136,7 +136,7 @@ int cia_write_from_ncsd(CIAContext *context, NCSDContext *ncsd, void (*on_progre
     write_struct_with_padding(fd, context->cert_chain, context->cert_chain_size);
     write_struct_with_padding(fd, &context->ticket, sizeof(ETicket));
     write_struct_with_padding(fd, &context->tmd_sig4096, context->tmd_sig_size);
-    save_off = ftello64(fd);
+    save_off = ftello(fd);
     write_struct_with_padding(fd, &context->tmd_body, sizeof(TMDBody) + sizeof(TMDContentChunk) * context->chunk_count);
 
     dataread = (uint8_t*)malloc(read_size);
@@ -203,7 +203,7 @@ int cia_write_from_ncsd(CIAContext *context, NCSDContext *ncsd, void (*on_progre
     // update final hashes
     mbedtls_sha256((const uint8_t*)&context->tmd_chunks[0], sizeof(TMDContentChunk) * context->chunk_count, context->tmd_body.content_info[0].hash, 0);
     mbedtls_sha256((const uint8_t*)&context->tmd_body.content_info[0], sizeof(TMDContentInfo) * 64, context->tmd_body.hash, 0);
-    fseeko64(fd, save_off, SEEK_SET);
+    fseeko(fd, save_off, SEEK_SET);
     write_struct_with_padding(fd, &context->tmd_body, sizeof(TMDBody) + sizeof(TMDContentChunk) * context->chunk_count);
     return 0;
 }
